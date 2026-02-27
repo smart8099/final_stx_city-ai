@@ -7,9 +7,10 @@ import {
   SignedOut,
   useAuth,
   useUser,
+  useOrganizationList,
 } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import {
   Box,
   Flex,
@@ -18,34 +19,35 @@ import {
   Button,
   HStack,
   Icon,
-  Input,
   Spinner,
 } from "@chakra-ui/react";
-import { FiArrowRight, FiShield, FiMail, FiCheck, FiClock } from "react-icons/fi";
+import { FiArrowRight, FiShield, FiClock } from "react-icons/fi";
 
 export default function Home() {
   const { isSignedIn, isLoaded, orgSlug, orgId } = useAuth();
   const { user } = useUser();
   const router = useRouter();
-  const [orgEmail, setOrgEmail] = useState("");
-  const [requested, setRequested] = useState(false);
+  const { userMemberships, setActive } = useOrganizationList({
+    userMemberships: { infinite: true },
+  });
 
-  // If signed in AND has an org, go to dashboard
+  // If signed in AND has an active org, go to dashboard
   useEffect(() => {
     if (isLoaded && isSignedIn && orgSlug) {
       router.push(`/dashboard/${orgSlug}/conversations`);
     }
   }, [isLoaded, isSignedIn, orgSlug, router]);
 
-  // Poll for org membership if signed in but no org
+  // If signed in but no active org, auto-select the first org
   useEffect(() => {
     if (!isLoaded || !isSignedIn || orgId) return;
-    const interval = setInterval(() => {
-      // Clerk auto-updates orgId when user accepts invite
-      // This effect will re-run and redirect when orgSlug appears
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [isLoaded, isSignedIn, orgId]);
+    if (!userMemberships?.data?.length) return;
+
+    const firstOrg = userMemberships.data[0].organization;
+    if (firstOrg && setActive) {
+      setActive({ organization: firstOrg.id });
+    }
+  }, [isLoaded, isSignedIn, orgId, userMemberships?.data, setActive]);
 
   if (!isLoaded) {
     return (
@@ -55,7 +57,7 @@ export default function Home() {
     );
   }
 
-  // Signed in but no org — onboarding screen
+  // Signed in but no org — waiting screen
   if (isSignedIn && !orgSlug) {
     return (
       <Flex minH="100vh" bg="gray.50" align="center" justify="center">
@@ -72,84 +74,41 @@ export default function Home() {
             </Text>
           </VStack>
 
-          {!requested ? (
-            <Box
-              bg="white"
-              border="1px solid"
-              borderColor="gray.200"
-              borderRadius="xl"
-              p={6}
-              w="100%"
+          <Box
+            bg="white"
+            border="1px solid"
+            borderColor="gray.200"
+            borderRadius="xl"
+            p={6}
+            w="100%"
+          >
+            <Flex
+              w={12}
+              h={12}
+              bg="blue.50"
+              borderRadius="full"
+              align="center"
+              justify="center"
+              mx="auto"
+              mb={4}
             >
-              <Icon as={FiMail} boxSize={8} color="blue.400" mb={3} />
-              <Text fontSize="md" fontWeight="600" color="gray.800" mb={1}>
-                Join your organization
-              </Text>
-              <Text fontSize="xs" color="gray.500" mb={5} lineHeight="1.5">
-                Enter your organization admin's email to request access.
-                They'll send you an invite to join your city's dashboard.
-              </Text>
-              <VStack spacing={3}>
-                <Input
-                  size="sm"
-                  placeholder="admin@yourcity.gov"
-                  value={orgEmail}
-                  onChange={(e) => setOrgEmail(e.target.value)}
-                  borderRadius="lg"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && orgEmail.trim()) setRequested(true);
-                  }}
-                />
-                <Button
-                  w="100%"
-                  size="sm"
-                  colorScheme="blue"
-                  onClick={() => {
-                    if (orgEmail.trim()) setRequested(true);
-                  }}
-                  isDisabled={!orgEmail.trim()}
-                >
-                  Request Access
-                </Button>
-              </VStack>
-            </Box>
-          ) : (
-            <Box
-              bg="white"
-              border="1px solid"
-              borderColor="gray.200"
-              borderRadius="xl"
-              p={6}
-              w="100%"
-            >
-              <Flex
-                w={12}
-                h={12}
-                bg="green.50"
-                borderRadius="full"
-                align="center"
-                justify="center"
-                mx="auto"
-                mb={4}
-              >
-                <Icon as={FiCheck} boxSize={6} color="green.500" />
-              </Flex>
-              <Text fontSize="md" fontWeight="600" color="gray.800" mb={1}>
-                Request sent
-              </Text>
-              <Text fontSize="xs" color="gray.500" mb={4} lineHeight="1.5">
-                We've notified <strong>{orgEmail}</strong>. You'll be able to
-                access the dashboard once they accept your request.
-              </Text>
-              <HStack justify="center" spacing={2} color="gray.400">
-                <Icon as={FiClock} boxSize={3} />
-                <Text fontSize="xs">Waiting for invitation...</Text>
-              </HStack>
-            </Box>
-          )}
+              <Icon as={FiClock} boxSize={6} color="blue.500" />
+            </Flex>
+            <Text fontSize="md" fontWeight="600" color="gray.800" mb={1}>
+              Waiting for access
+            </Text>
+            <Text fontSize="xs" color="gray.500" lineHeight="1.5">
+              Your admin hasn't added you to an organization yet.
+              Once they invite you, you'll be redirected to the dashboard automatically.
+            </Text>
+            <HStack justify="center" spacing={2} color="gray.400" mt={4}>
+              <Spinner size="xs" color="blue.400" />
+              <Text fontSize="xs">Checking for invitations...</Text>
+            </HStack>
+          </Box>
 
           <Text fontSize="xs" color="gray.400">
-            Already have an invite? Check your email for the link.
+            Check your email for an invite link from your admin.
           </Text>
         </VStack>
       </Flex>
