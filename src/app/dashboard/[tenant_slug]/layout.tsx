@@ -183,6 +183,23 @@ export default function DashboardLayout({
                     },
                   },
                 }}
+                userProfileProps={{
+                  appearance: {
+                    elements: {
+                      profileSection__danger: {
+                        display: orgRole === "org:admin" ? "block" : "none",
+                      },
+                      profileSectionPrimaryButton__danger: {
+                        display: orgRole === "org:admin" ? "flex" : "none",
+                      },
+                      // Hide the entire security page for members
+                      ...(orgRole !== "org:admin" ? {
+                        navbarButton__security: { display: "none" },
+                        pageScrollBox__security: { display: "none" },
+                      } : {}),
+                    },
+                  },
+                }}
               />
             </HStack>
           </SignedIn>
