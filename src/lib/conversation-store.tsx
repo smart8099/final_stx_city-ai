@@ -1,13 +1,15 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { Conversation, Message } from "./types";
+import { Conversation, Message, InternalNote } from "./types";
 
 interface ConversationStore {
   conversations: Conversation[];
   addConversation: (conv: Conversation) => void;
   addMessage: (conversationId: string, message: Message) => void;
   updateConversation: (id: string, updates: Partial<Conversation>) => void;
+  bulkUpdateConversations: (ids: string[], updates: Partial<Conversation>) => void;
+  addNote: (conversationId: string, note: InternalNote) => void;
   getConversation: (id: string) => Conversation | undefined;
   tenantSlug: string;
   setTenantSlug: (slug: string) => void;
@@ -76,6 +78,23 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     );
   }, []);
 
+  const bulkUpdateConversations = useCallback((ids: string[], updates: Partial<Conversation>) => {
+    const idSet = new Set(ids);
+    setConversations((prev) =>
+      prev.map((c) => (idSet.has(c.id) ? { ...c, ...updates } : c))
+    );
+  }, []);
+
+  const addNote = useCallback((conversationId: string, note: InternalNote) => {
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === conversationId
+          ? { ...c, notes: [...(c.notes || []), note], updatedAt: note.timestamp }
+          : c
+      )
+    );
+  }, []);
+
   const getConversation = useCallback(
     (id: string) => conversations.find((c) => c.id === id),
     [conversations]
@@ -88,6 +107,8 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         addConversation,
         addMessage,
         updateConversation,
+        bulkUpdateConversations,
+        addNote,
         getConversation,
         tenantSlug,
         setTenantSlug,

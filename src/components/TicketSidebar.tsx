@@ -8,12 +8,15 @@ import {
   FiAlertTriangle,
   FiCheckCircle,
   FiUsers,
+  FiMinusCircle,
+  FiClock,
+  FiUser,
 } from "react-icons/fi";
-import { FiMinusCircle } from "react-icons/fi";
+import { useUser } from "@clerk/nextjs";
 import { Conversation } from "@/lib/types";
 import { useDepartments } from "@/lib/department-store";
 
-export type ViewFilter = string; // "all" | status | "dept:DeptName"
+export type ViewFilter = string;
 
 interface Props {
   conversations: Conversation[];
@@ -23,14 +26,69 @@ interface Props {
 
 const STATUS_VIEWS: { key: string; label: string; icon: typeof FiInbox; color: string }[] = [
   { key: "all", label: "All Tickets", icon: FiInbox, color: "gray.600" },
-  { key: "new", label: "New", icon: FiAlertCircle, color: "blue.500" },
-  { key: "open", label: "Open", icon: FiMessageSquare, color: "green.500" },
   { key: "escalated", label: "Escalated", icon: FiAlertTriangle, color: "red.500" },
-  { key: "resolved", label: "Resolved", icon: FiCheckCircle, color: "gray.400" },
+  { key: "resolved", label: "Solved", icon: FiCheckCircle, color: "gray.400" },
 ];
+
+const QUICK_VIEWS: { key: string; label: string; icon: typeof FiClock; color: string }[] = [
+  { key: "view:mine", label: "My Tickets", icon: FiUser, color: "blue.500" },
+  { key: "view:unassigned", label: "Unassigned", icon: FiMinusCircle, color: "orange.500" },
+];
+
+function SidebarItem({
+  isActive,
+  icon,
+  label,
+  count,
+  color,
+  onClick,
+}: {
+  isActive: boolean;
+  icon: typeof FiInbox;
+  label: string;
+  count: number;
+  color: string;
+  onClick: () => void;
+}) {
+  return (
+    <HStack
+      px={4}
+      py={1.5}
+      cursor="pointer"
+      bg={isActive ? "blue.50" : "transparent"}
+      color={isActive ? "blue.700" : "gray.600"}
+      _hover={{ bg: isActive ? "blue.50" : "gray.50" }}
+      onClick={onClick}
+      justify="space-between"
+      transition="all 0.1s"
+    >
+      <HStack spacing={2}>
+        <Icon as={icon} boxSize={3.5} color={isActive ? "blue.500" : color} />
+        <Text fontSize="13px" fontWeight={isActive ? "600" : "400"} noOfLines={1}>
+          {label}
+        </Text>
+      </HStack>
+      {count > 0 && (
+        <Badge
+          fontSize="10px"
+          borderRadius="full"
+          px={1.5}
+          minW="20px"
+          textAlign="center"
+          colorScheme={isActive ? "blue" : "gray"}
+          variant="subtle"
+        >
+          {count}
+        </Badge>
+      )}
+    </HStack>
+  );
+}
 
 export default function TicketSidebar({ conversations, activeView, onViewChange }: Props) {
   const { departments } = useDepartments();
+  const { user } = useUser();
+  const myName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
 
   const getStatusCount = (view: string) => {
     if (view === "all") return conversations.length;
@@ -39,6 +97,16 @@ export default function TicketSidebar({ conversations, activeView, onViewChange 
 
   const getDeptCount = (deptName: string) => {
     return conversations.filter((c) => c.department === deptName).length;
+  };
+
+  const getQuickViewCount = (key: string) => {
+    if (key === "view:mine") {
+      return myName ? conversations.filter((c) => c.assignedTo === myName).length : 0;
+    }
+    if (key === "view:unassigned") {
+      return conversations.filter((c) => !c.assignedTo).length;
+    }
+    return 0;
   };
 
   return (
@@ -51,138 +119,71 @@ export default function TicketSidebar({ conversations, activeView, onViewChange 
       py={4}
       overflowY="auto"
     >
+      {/* Quick Views */}
+      <Text fontSize="11px" fontWeight="600" color="gray.400" px={4} mb={2} textTransform="uppercase" letterSpacing="wider">
+        Views
+      </Text>
+      <VStack spacing={0} align="stretch">
+        {QUICK_VIEWS.map((view) => (
+          <SidebarItem
+            key={view.key}
+            isActive={activeView === view.key}
+            icon={view.icon}
+            label={view.label}
+            count={getQuickViewCount(view.key)}
+            color={view.color}
+            onClick={() => onViewChange(view.key)}
+          />
+        ))}
+      </VStack>
+
+      <Divider my={3} />
+
+      {/* Status */}
       <Text fontSize="11px" fontWeight="600" color="gray.400" px={4} mb={2} textTransform="uppercase" letterSpacing="wider">
         Status
       </Text>
       <VStack spacing={0} align="stretch">
-        {STATUS_VIEWS.map((view) => {
-          const isActive = activeView === view.key;
-          const count = getStatusCount(view.key);
-          return (
-            <HStack
-              key={view.key}
-              px={4}
-              py={1.5}
-              cursor="pointer"
-              bg={isActive ? "blue.50" : "transparent"}
-              color={isActive ? "blue.700" : "gray.600"}
-              _hover={{ bg: isActive ? "blue.50" : "gray.50" }}
-              onClick={() => onViewChange(view.key)}
-              justify="space-between"
-              transition="all 0.1s"
-            >
-              <HStack spacing={2}>
-                <Icon as={view.icon} boxSize={3.5} color={isActive ? "blue.500" : view.color} />
-                <Text fontSize="13px" fontWeight={isActive ? "600" : "400"}>
-                  {view.label}
-                </Text>
-              </HStack>
-              {count > 0 && (
-                <Badge
-                  fontSize="10px"
-                  borderRadius="full"
-                  px={1.5}
-                  minW="20px"
-                  textAlign="center"
-                  colorScheme={isActive ? "blue" : "gray"}
-                  variant="subtle"
-                >
-                  {count}
-                </Badge>
-              )}
-            </HStack>
-          );
-        })}
+        {STATUS_VIEWS.map((view) => (
+          <SidebarItem
+            key={view.key}
+            isActive={activeView === view.key}
+            icon={view.icon}
+            label={view.label}
+            count={getStatusCount(view.key)}
+            color={view.color}
+            onClick={() => onViewChange(view.key)}
+          />
+        ))}
       </VStack>
 
-      {(
-        <>
-          <Divider my={3} />
-          <Text fontSize="11px" fontWeight="600" color="gray.400" px={4} mb={2} textTransform="uppercase" letterSpacing="wider">
-            Departments
-          </Text>
-          <VStack spacing={0} align="stretch">
-            {/* Unassigned */}
-            {(() => {
-              const isActive = activeView === "dept:unassigned";
-              const count = conversations.filter((c) => !c.department).length;
-              return (
-                <HStack
-                  px={4}
-                  py={1.5}
-                  cursor="pointer"
-                  bg={isActive ? "blue.50" : "transparent"}
-                  color={isActive ? "blue.700" : "gray.600"}
-                  _hover={{ bg: isActive ? "blue.50" : "gray.50" }}
-                  onClick={() => onViewChange("dept:unassigned")}
-                  justify="space-between"
-                  transition="all 0.1s"
-                >
-                  <HStack spacing={2}>
-                    <Icon as={FiMinusCircle} boxSize={3.5} color={isActive ? "blue.500" : "gray.400"} />
-                    <Text fontSize="13px" fontWeight={isActive ? "600" : "400"}>
-                      Unassigned
-                    </Text>
-                  </HStack>
-                  {count > 0 && (
-                    <Badge
-                      fontSize="10px"
-                      borderRadius="full"
-                      px={1.5}
-                      minW="20px"
-                      textAlign="center"
-                      colorScheme={isActive ? "blue" : "gray"}
-                      variant="subtle"
-                    >
-                      {count}
-                    </Badge>
-                  )}
-                </HStack>
-              );
-            })()}
-            {departments.map((dept) => {
-              const key = `dept:${dept.name}`;
-              const isActive = activeView === key;
-              const count = getDeptCount(dept.name);
-              return (
-                <HStack
-                  key={dept.id}
-                  px={4}
-                  py={1.5}
-                  cursor="pointer"
-                  bg={isActive ? "blue.50" : "transparent"}
-                  color={isActive ? "blue.700" : "gray.600"}
-                  _hover={{ bg: isActive ? "blue.50" : "gray.50" }}
-                  onClick={() => onViewChange(key)}
-                  justify="space-between"
-                  transition="all 0.1s"
-                >
-                  <HStack spacing={2}>
-                    <Icon as={FiUsers} boxSize={3.5} color={isActive ? "blue.500" : "gray.400"} />
-                    <Text fontSize="13px" fontWeight={isActive ? "600" : "400"} noOfLines={1}>
-                      {dept.name}
-                    </Text>
-                  </HStack>
-                  {count > 0 && (
-                    <Badge
-                      fontSize="10px"
-                      borderRadius="full"
-                      px={1.5}
-                      minW="20px"
-                      textAlign="center"
-                      colorScheme={isActive ? "blue" : "gray"}
-                      variant="subtle"
-                    >
-                      {count}
-                    </Badge>
-                  )}
-                </HStack>
-              );
-            })}
-          </VStack>
-        </>
-      )}
-    </Box>
+      <Divider my={3} />
 
+      {/* Departments */}
+      <Text fontSize="11px" fontWeight="600" color="gray.400" px={4} mb={2} textTransform="uppercase" letterSpacing="wider">
+        Departments
+      </Text>
+      <VStack spacing={0} align="stretch">
+        <SidebarItem
+          isActive={activeView === "dept:unassigned"}
+          icon={FiMinusCircle}
+          label="Unassigned"
+          count={conversations.filter((c) => !c.department).length}
+          color="gray.400"
+          onClick={() => onViewChange("dept:unassigned")}
+        />
+        {departments.map((dept) => (
+          <SidebarItem
+            key={dept.id}
+            isActive={activeView === `dept:${dept.name}`}
+            icon={FiUsers}
+            label={dept.name}
+            count={getDeptCount(dept.name)}
+            color="gray.400"
+            onClick={() => onViewChange(`dept:${dept.name}`)}
+          />
+        ))}
+      </VStack>
+    </Box>
   );
 }

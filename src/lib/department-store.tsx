@@ -29,7 +29,19 @@ export function DepartmentProvider({ children }: { children: React.ReactNode }) 
     const stored = localStorage.getItem(key);
     if (stored) {
       try {
-        setDepartments(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        // Migrate: ensure members array exists and has firstName/lastName
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const migrated = parsed.map((d: any) => ({
+          ...d,
+          members: (d.members || []).map((m: any) => ({
+            id: m.id || `member-${Date.now()}`,
+            firstName: m.firstName || (m.name ? m.name.split(" ")[0] : ""),
+            lastName: m.lastName || (m.name ? m.name.split(" ").slice(1).join(" ") : ""),
+            email: m.email || "",
+          })),
+        }));
+        setDepartments(migrated);
       } catch {
         setDepartments([]);
       }

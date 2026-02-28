@@ -29,6 +29,7 @@ import {
 } from "react-icons/fi";
 import { DepartmentProvider } from "@/lib/department-store";
 import { SettingsProvider } from "@/lib/settings-store";
+import { MacroProvider } from "@/lib/macro-store";
 import ChatWidget from "@/components/ChatWidget";
 
 const NAV_ITEMS = [
@@ -102,7 +103,9 @@ export default function DashboardLayout({
                   organizationSwitcherPopoverActionButton__createOrganization: {
                     display: "none",
                   },
-                  organizationSwitcherPopoverActionButton__manageOrganization: {},
+                  organizationSwitcherPopoverActionButton__manageOrganization: {
+                    display: orgRole === "org:admin" ? "flex" : "none",
+                  },
                   organizationSwitcherTriggerIcon: {
                     display: "none",
                   },
@@ -172,6 +175,12 @@ export default function DashboardLayout({
                 appearance={{
                   elements: {
                     avatarBox: { width: "28px", height: "28px" },
+                    profileSectionPrimaryButton__danger: {
+                      display: orgRole === "org:admin" ? "flex" : "none",
+                    },
+                    profileSection__danger: {
+                      display: orgRole === "org:admin" ? "block" : "none",
+                    },
                   },
                 }}
               />
@@ -196,8 +205,10 @@ export default function DashboardLayout({
       <Box flex={1} overflow="auto" bg="white">
         <DepartmentProvider>
           <SettingsProvider>
-            {children}
-            <ChatWidget />
+            <MacroProvider>
+              {children}
+              <ChatWidget />
+            </MacroProvider>
           </SettingsProvider>
         </DepartmentProvider>
       </Box>

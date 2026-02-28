@@ -25,6 +25,7 @@ import {
   FiCheck,
   FiClock,
   FiBook,
+  FiEdit2,
 } from "react-icons/fi";
 import { useParams } from "next/navigation";
 import { useDepartments } from "@/lib/department-store";
@@ -72,6 +73,8 @@ export default function KnowledgeBasePage() {
   const [showFaqForm, setShowFaqForm] = useState(false);
   const [newFaq, setNewFaq] = useState({ question: "", answer: "", department: "" });
   const [filterDept, setFilterDept] = useState("all");
+  const [editingFaqId, setEditingFaqId] = useState<string | null>(null);
+  const [editFaq, setEditFaq] = useState({ question: "", answer: "", department: "" });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const formatSize = (bytes: number) => {
@@ -155,7 +158,18 @@ export default function KnowledgeBasePage() {
   };
 
   const removeDoc = (id: string) => setDocuments((prev) => prev.filter((d) => d.id !== id));
-  const removeFaq = (id: string) => setFaqs((prev) => prev.filter((f) => f.id !== id));
+  const removeFaq = (id: string) => { setFaqs((prev) => prev.filter((f) => f.id !== id)); if (editingFaqId === id) setEditingFaqId(null); };
+
+  const startEditFaq = (faq: FAQ) => {
+    setEditingFaqId(faq.id);
+    setEditFaq({ question: faq.question, answer: faq.answer, department: faq.department });
+  };
+
+  const saveEditFaq = () => {
+    if (!editFaq.question.trim() || !editFaq.answer.trim()) return;
+    setFaqs((prev) => prev.map((f) => f.id === editingFaqId ? { ...f, ...editFaq } : f));
+    setEditingFaqId(null);
+  };
 
   const filteredDocs = filterDept === "all" ? documents : documents.filter((d) => d.department === filterDept);
   const filteredFaqs = filterDept === "all" ? faqs : faqs.filter((f) => f.department === filterDept);
@@ -272,7 +286,7 @@ export default function KnowledgeBasePage() {
               Manual FAQs ({filteredFaqs.length})
             </Text>
             <Text fontSize="xs" color="gray.400">
-              Q&A pairs stored as source_type: manual
+              Add and edit Q&A pairs directly
             </Text>
           </Box>
           <Button
@@ -333,25 +347,67 @@ export default function KnowledgeBasePage() {
               borderColor="gray.100"
               _last={{ borderBottom: "none" }}
             >
-              <Flex justify="space-between" align="start">
-                <Box flex={1} mr={4}>
-                  <HStack spacing={2} mb={1}>
-                    <Icon as={FiBook} boxSize={3} color="gray.400" />
-                    <Text fontSize="sm" fontWeight="500" color="gray.700">{faq.question}</Text>
+              {editingFaqId === faq.id ? (
+                <VStack spacing={3} align="stretch">
+                  <Select
+                    size="sm"
+                    value={editFaq.department}
+                    onChange={(e) => setEditFaq({ ...editFaq, department: e.target.value })}
+                  >
+                    {deptNames.map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </Select>
+                  <Input
+                    size="sm"
+                    placeholder="Question"
+                    value={editFaq.question}
+                    onChange={(e) => setEditFaq({ ...editFaq, question: e.target.value })}
+                  />
+                  <Textarea
+                    size="sm"
+                    placeholder="Answer"
+                    rows={3}
+                    value={editFaq.answer}
+                    onChange={(e) => setEditFaq({ ...editFaq, answer: e.target.value })}
+                  />
+                  <HStack justify="flex-end">
+                    <Button size="sm" variant="ghost" onClick={() => setEditingFaqId(null)}>Cancel</Button>
+                    <Button size="sm" colorScheme="blue" onClick={saveEditFaq}>Save</Button>
                   </HStack>
-                  <Text fontSize="xs" color="gray.500" pl={5}>{faq.answer}</Text>
-                  <Badge fontSize="10px" mt={2} ml={5} colorScheme="gray">{faq.department}</Badge>
-                </Box>
-                <IconButton
-                  aria-label="Remove"
-                  icon={<Icon as={FiTrash2} />}
-                  size="xs"
-                  variant="ghost"
-                  color="gray.400"
-                  _hover={{ color: "red.500" }}
-                  onClick={() => removeFaq(faq.id)}
-                />
-              </Flex>
+                </VStack>
+              ) : (
+                <Flex justify="space-between" align="start">
+                  <Box flex={1} mr={4}>
+                    <HStack spacing={2} mb={1}>
+                      <Icon as={FiBook} boxSize={3} color="gray.400" />
+                      <Text fontSize="sm" fontWeight="500" color="gray.700">{faq.question}</Text>
+                    </HStack>
+                    <Text fontSize="xs" color="gray.500" pl={5}>{faq.answer}</Text>
+                    <Badge fontSize="10px" mt={2} ml={5} colorScheme="gray">{faq.department}</Badge>
+                  </Box>
+                  <HStack spacing={1}>
+                    <IconButton
+                      aria-label="Edit"
+                      icon={<Icon as={FiEdit2} />}
+                      size="xs"
+                      variant="ghost"
+                      color="gray.400"
+                      _hover={{ color: "blue.500" }}
+                      onClick={() => startEditFaq(faq)}
+                    />
+                    <IconButton
+                      aria-label="Remove"
+                      icon={<Icon as={FiTrash2} />}
+                      size="xs"
+                      variant="ghost"
+                      color="gray.400"
+                      _hover={{ color: "red.500" }}
+                      onClick={() => removeFaq(faq.id)}
+                    />
+                  </HStack>
+                </Flex>
+              )}
             </Box>
           ))}
         </VStack>

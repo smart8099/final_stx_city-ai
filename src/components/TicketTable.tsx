@@ -15,36 +15,63 @@ import {
   Tr,
   Th,
   Td,
+  Input,
+  InputGroup,
+  InputLeftElement,
+  Checkbox,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
 } from "@chakra-ui/react";
-import { FiChevronLeft, FiChevronRight, FiInbox } from "react-icons/fi";
+import { FiChevronLeft, FiChevronRight, FiInbox, FiSearch, FiClock } from "react-icons/fi";
 import { Conversation, INTENT_LABELS } from "@/lib/types";
 import { useRef, useState, useEffect } from "react";
 
-const ROW_HEIGHT = 33; // approximate height of each row in px
-const HEADER_HEIGHT = 70; // table header + top bar
+const ROW_HEIGHT = 33;
+const HEADER_HEIGHT = 105; // includes search bar
 const PAGINATION_HEIGHT = 40;
 
 const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
   new: { color: "orange", label: "New" },
   open: { color: "green", label: "Open" },
   escalated: { color: "red", label: "Escalated" },
-  resolved: { color: "gray", label: "Resolved" },
+  resolved: { color: "gray", label: "Solved" },
+};
+
+const PRIORITY_CONFIG: Record<string, { color: string; label: string }> = {
+  urgent: { color: "red", label: "Urgent" },
+  high: { color: "orange", label: "High" },
+  normal: { color: "blue", label: "Normal" },
+  low: { color: "gray", label: "Low" },
 };
 
 interface Props {
   conversations: Conversation[];
   selectedId: string | null;
   currentPage: number;
+  searchQuery: string;
+  selectedIds: string[];
   onPageChange: (page: number) => void;
   onSelect: (id: string) => void;
+  onSearchChange: (query: string) => void;
+  onSelectionChange: (ids: string[]) => void;
+  onBulkStatusChange: (ids: string[], status: string) => void;
+  onBulkPriorityChange: (ids: string[], priority: string) => void;
 }
 
 export default function TicketTable({
   conversations,
   selectedId,
   currentPage,
+  searchQuery,
+  selectedIds,
   onPageChange,
   onSelect,
+  onSearchChange,
+  onSelectionChange,
+  onBulkStatusChange,
+  onBulkPriorityChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [ticketsPerPage, setTicketsPerPage] = useState(20);
@@ -62,30 +89,43 @@ export default function TicketTable({
     return () => window.removeEventListener("resize", calculate);
   }, []);
 
-  const totalPages = Math.max(1, Math.ceil(conversations.length / ticketsPerPage));
+  // Filter by search
+  const filtered = searchQuery.trim()
+    ? conversations.filter((c) => {
+        const q = searchQuery.toLowerCase();
+        const subject = getSubject(c).toLowerCase();
+        return subject.includes(q) || c.id.toLowerCase().includes(q) || (c.department || "").toLowerCase().includes(q);
+      })
+    : conversations;
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ticketsPerPage));
   const page = Math.min(currentPage, totalPages);
   const startIdx = (page - 1) * ticketsPerPage;
-  const pageTickets = conversations.slice(startIdx, startIdx + ticketsPerPage);
+  const pageTickets = filtered.slice(startIdx, startIdx + ticketsPerPage);
 
-  const getSubject = (conv: Conversation) => {
-    const firstUserMsg = conv.messages.find((m) => m.role === "user");
-    if (!firstUserMsg) return "No subject";
-    const text = firstUserMsg.content;
-    return text.length > 70 ? text.slice(0, 70) + "..." : text;
+  const allPageSelected = pageTickets.length > 0 && pageTickets.every((c) => selectedIds.includes(c.id));
+
+  const handleSelectAll = () => {
+    if (allPageSelected) {
+      onSelectionChange(selectedIds.filter((id) => !pageTickets.some((c) => c.id === id)));
+    } else {
+      const newIds = new Set([...selectedIds, ...pageTickets.map((c) => c.id)]);
+      onSelectionChange(Array.from(newIds));
+    }
   };
 
-  const formatTime = (iso: string) => {
-    const d = new Date(iso);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 1) return "just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHrs = Math.floor(diffMins / 60);
-    if (diffHrs < 24) return `${diffHrs}h ago`;
-    const diffDays = Math.floor(diffHrs / 24);
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+  const handleSelectOne = (id: string) => {
+    if (selectedIds.includes(id)) {
+      onSelectionChange(selectedIds.filter((i) => i !== id));
+    } else {
+      onSelectionChange([...selectedIds, id]);
+    }
+  };
+
+  const isOverdue = (conv: Conversation) => {
+    if (conv.status === "resolved") return false;
+    const openMs = Date.now() - new Date(conv.startedAt).getTime();
+    return openMs > 24 * 60 * 60 * 1000;
   };
 
   const getPageNumbers = () => {
@@ -106,13 +146,66 @@ export default function TicketTable({
 
   return (
     <Box ref={containerRef} flex={1} display="flex" flexDirection="column" bg="white" overflow="hidden">
-      {/* Header */}
-      <Flex px={4} py={2} borderBottom="1px solid" borderColor="gray.200" align="center">
-        <Text fontSize="xs" color="gray.500">
-          {conversations.length} ticket{conversations.length !== 1 ? "s" : ""}
-          {totalPages > 1 && ` (Page ${page} of ${totalPages})`}
-        </Text>
-      </Flex>
+      {/* Search + Count Header */}
+      <Box px={4} py={2} borderBottom="1px solid" borderColor="gray.200">
+        <Flex align="center" justify="space-between" mb={2}>
+          <Text fontSize="xs" color="gray.500">
+            {filtered.length} ticket{filtered.length !== 1 ? "s" : ""}
+            {totalPages > 1 && ` (Page ${page} of ${totalPages})`}
+          </Text>
+        </Flex>
+        <InputGroup size="sm">
+          <InputLeftElement pointerEvents="none">
+            <Icon as={FiSearch} color="gray.400" boxSize={3.5} />
+          </InputLeftElement>
+          <Input
+            placeholder="Search tickets..."
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            borderRadius="md"
+            fontSize="xs"
+            bg="gray.50"
+          />
+        </InputGroup>
+      </Box>
+
+      {/* Bulk Action Bar */}
+      {selectedIds.length > 0 && (
+        <Flex px={4} py={1.5} bg="blue.50" borderBottom="1px solid" borderColor="blue.100" align="center" gap={3}>
+          <Text fontSize="xs" fontWeight="600" color="blue.700">
+            {selectedIds.length} selected
+          </Text>
+          <Menu>
+            <MenuButton as={Button} size="xs" variant="ghost" colorScheme="blue">
+              Set Status
+            </MenuButton>
+            <MenuList minW="120px">
+              {Object.entries(STATUS_CONFIG)
+                .filter(([key]) => key !== "new" && key !== "open")
+                .map(([key, cfg]) => (
+                <MenuItem key={key} fontSize="xs" onClick={() => onBulkStatusChange(selectedIds, key)}>
+                  {cfg.label}
+                </MenuItem>
+              ))}
+            </MenuList>
+          </Menu>
+          <Menu>
+            <MenuButton as={Button} size="xs" variant="ghost" colorScheme="blue">
+              Set Priority
+            </MenuButton>
+            <MenuList minW="120px">
+              {Object.entries(PRIORITY_CONFIG).map(([key, cfg]) => (
+                <MenuItem key={key} fontSize="xs" onClick={() => onBulkPriorityChange(selectedIds, key)}>
+                  {cfg.label}
+                </MenuItem>
+              ))}
+            </MenuList>
+          </Menu>
+          <Button size="xs" variant="ghost" color="gray.500" onClick={() => onSelectionChange([])}>
+            Clear
+          </Button>
+        </Flex>
+      )}
 
       {/* Table */}
       <Box flex={1} overflowY="auto" bg="white">
@@ -121,83 +214,43 @@ export default function TicketTable({
             <Icon as={FiInbox} boxSize={10} mb={3} />
             <Text fontSize="sm" fontWeight="500">No tickets</Text>
             <Text fontSize="xs" color="gray.400" mt={1}>
-              Tickets will appear here when users start conversations
+              {searchQuery ? "No tickets match your search" : "Tickets will appear here when users start conversations"}
             </Text>
           </Flex>
         ) : (
           <Table size="sm" variant="simple">
             <Thead>
               <Tr>
-                <Th
-                  fontSize="11px"
-                  color="gray.500"
-                  fontWeight="600"
-                  textTransform="uppercase"
-                  letterSpacing="wider"
-                  py={2}
-                  px={4}
-                  w="80px"
-                >
+                <Th py={2} px={3} w="32px">
+                  <Checkbox
+                    size="sm"
+                    isChecked={allPageSelected}
+                    onChange={handleSelectAll}
+                    colorScheme="blue"
+                  />
+                </Th>
+                <Th fontSize="11px" color="gray.500" fontWeight="600" textTransform="uppercase" letterSpacing="wider" py={2} px={3} w="80px">
                   Status
                 </Th>
-                <Th
-                  fontSize="11px"
-                  color="gray.500"
-                  fontWeight="600"
-                  textTransform="uppercase"
-                  letterSpacing="wider"
-                  py={2}
-                  px={3}
-                >
+                <Th fontSize="11px" color="gray.500" fontWeight="600" textTransform="uppercase" letterSpacing="wider" py={2} px={3}>
                   Subject
                 </Th>
-                <Th
-                  fontSize="11px"
-                  color="gray.500"
-                  fontWeight="600"
-                  textTransform="uppercase"
-                  letterSpacing="wider"
-                  py={2}
-                  px={3}
-                  w="130px"
-                >
+                <Th fontSize="11px" color="gray.500" fontWeight="600" textTransform="uppercase" letterSpacing="wider" py={2} px={3} w="130px">
                   Requester
                 </Th>
-                <Th
-                  fontSize="11px"
-                  color="gray.500"
-                  fontWeight="600"
-                  textTransform="uppercase"
-                  letterSpacing="wider"
-                  py={2}
-                  px={3}
-                  w="140px"
-                >
+                <Th fontSize="11px" color="gray.500" fontWeight="600" textTransform="uppercase" letterSpacing="wider" py={2} px={3} w="140px">
                   Intent
                 </Th>
-                <Th
-                  fontSize="11px"
-                  color="gray.500"
-                  fontWeight="600"
-                  textTransform="uppercase"
-                  letterSpacing="wider"
-                  py={2}
-                  px={3}
-                  w="120px"
-                >
+                <Th fontSize="11px" color="gray.500" fontWeight="600" textTransform="uppercase" letterSpacing="wider" py={2} px={3} w="120px">
                   Department
                 </Th>
-                <Th
-                  fontSize="11px"
-                  color="gray.500"
-                  fontWeight="600"
-                  textTransform="uppercase"
-                  letterSpacing="wider"
-                  py={2}
-                  px={3}
-                  w="80px"
-                  textAlign="right"
-                >
+                <Th fontSize="11px" color="gray.500" fontWeight="600" textTransform="uppercase" letterSpacing="wider" py={2} px={3} w="120px">
+                  Assignee
+                </Th>
+                <Th fontSize="11px" color="gray.500" fontWeight="600" textTransform="uppercase" letterSpacing="wider" py={2} px={3} w="70px">
+                  Priority
+                </Th>
+                <Th fontSize="11px" color="gray.500" fontWeight="600" textTransform="uppercase" letterSpacing="wider" py={2} px={3} w="90px" textAlign="right">
                   Requested
                 </Th>
               </Tr>
@@ -206,18 +259,30 @@ export default function TicketTable({
               {pageTickets.map((conv) => {
                 const cfg = STATUS_CONFIG[conv.status] || STATUS_CONFIG.open;
                 const isSelected = conv.id === selectedId;
+                const isChecked = selectedIds.includes(conv.id);
+                const priority = conv.priority || "normal";
+                const pCfg = PRIORITY_CONFIG[priority];
+                const overdue = isOverdue(conv);
                 return (
                   <Tr
                     key={conv.id}
                     cursor="pointer"
-                    bg={isSelected ? "blue.50" : "white"}
+                    bg={isChecked ? "blue.50" : isSelected ? "blue.50" : "white"}
                     _hover={{ bg: isSelected ? "blue.50" : "gray.50" }}
                     onClick={() => onSelect(conv.id)}
                     transition="background 0.1s"
                     borderLeft="3px solid"
                     borderLeftColor={isSelected ? "blue.500" : "transparent"}
                   >
-                    <Td py={1} px={4} borderBottom="1px solid" borderColor="gray.100">
+                    <Td py={1} px={3} borderBottom="1px solid" borderColor="gray.100" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        size="sm"
+                        isChecked={isChecked}
+                        onChange={() => handleSelectOne(conv.id)}
+                        colorScheme="blue"
+                      />
+                    </Td>
+                    <Td py={1} px={3} borderBottom="1px solid" borderColor="gray.100">
                       <Badge
                         colorScheme={cfg.color}
                         fontSize="11px"
@@ -250,10 +315,32 @@ export default function TicketTable({
                         {conv.department || "—"}
                       </Text>
                     </Td>
-                    <Td py={2} px={3} borderBottom="1px solid" borderColor="gray.100" textAlign="right">
-                      <Text fontSize="12px" color="gray.400">
-                        {formatTime(conv.updatedAt)}
+                    <Td py={1} px={3} borderBottom="1px solid" borderColor="gray.100">
+                      <Text fontSize="12px" color="gray.500" noOfLines={1}>
+                        {conv.assignedTo || "—"}
                       </Text>
+                    </Td>
+                    <Td py={1} px={3} borderBottom="1px solid" borderColor="gray.100">
+                      {priority !== "normal" && (
+                        <Badge
+                          colorScheme={pCfg.color}
+                          fontSize="10px"
+                          fontWeight="500"
+                          px={1.5}
+                          py={0}
+                          borderRadius="sm"
+                        >
+                          {pCfg.label}
+                        </Badge>
+                      )}
+                    </Td>
+                    <Td py={1} px={3} borderBottom="1px solid" borderColor="gray.100" textAlign="right">
+                      <HStack spacing={1} justify="flex-end">
+                        {overdue && <Icon as={FiClock} boxSize={3} color="red.400" />}
+                        <Text fontSize="12px" color={overdue ? "red.400" : "gray.400"}>
+                          {formatTime(conv.updatedAt)}
+                        </Text>
+                      </HStack>
                     </Td>
                   </Tr>
                 );
@@ -275,8 +362,7 @@ export default function TicketTable({
           justify="space-between"
         >
           <Text fontSize="xs" color="gray.500">
-            {startIdx + 1}–{Math.min(startIdx + ticketsPerPage, conversations.length)} of{" "}
-            {conversations.length}
+            {startIdx + 1}–{Math.min(startIdx + ticketsPerPage, filtered.length)} of {filtered.length}
           </Text>
           <HStack spacing={1}>
             <IconButton
@@ -318,4 +404,25 @@ export default function TicketTable({
       )}
     </Box>
   );
+}
+
+function getSubject(conv: Conversation) {
+  const firstUserMsg = conv.messages.find((m) => m.role === "user");
+  if (!firstUserMsg) return "No subject";
+  const text = firstUserMsg.content;
+  return text.length > 70 ? text.slice(0, 70) + "..." : text;
+}
+
+function formatTime(iso: string) {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHrs = Math.floor(diffMins / 60);
+  if (diffHrs < 24) return `${diffHrs}h ago`;
+  const diffDays = Math.floor(diffHrs / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }

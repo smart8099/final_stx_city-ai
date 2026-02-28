@@ -13,12 +13,16 @@ import {
   Flex,
   Switch,
   FormControl,
+  Badge,
+  Image,
   FormLabel,
 } from "@chakra-ui/react";
 import {
   FiEye,
   FiEyeOff,
   FiCopy,
+  FiMessageCircle,
+  FiSend,
 } from "react-icons/fi";
 import { useParams } from "next/navigation";
 import { useSettings } from "@/lib/settings-store";
@@ -129,6 +133,132 @@ export default function SettingsPage() {
               />
             </FormControl>
           </VStack>
+        </Box>
+
+        {/* Live Widget Preview */}
+        <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="lg" p={5}>
+          <Text fontWeight="600" fontSize="sm" color="gray.700" mb={4}>Live Widget Preview</Text>
+          <Flex justify="center">
+            <Box
+              w="300px"
+              h="400px"
+              borderRadius="xl"
+              border="1px solid"
+              borderColor="gray.200"
+              boxShadow="lg"
+              overflow="hidden"
+              display="flex"
+              flexDirection="column"
+              bg="white"
+            >
+              {/* Preview Header */}
+              <Flex
+                bg={settings.primaryColor || "#1a56db"}
+                color="white"
+                px={4}
+                py={3}
+                align="center"
+                justify="space-between"
+              >
+                <HStack spacing={2}>
+                  {settings.logoUrl && (
+                    <Image
+                      src={settings.logoUrl}
+                      alt="Logo"
+                      boxSize="24px"
+                      borderRadius="md"
+                      objectFit="contain"
+                      bg="whiteAlpha.200"
+                    />
+                  )}
+                  <Box>
+                    <Text fontWeight="600" fontSize="13px">
+                      {settings.cityName || "CityAssist"}
+                    </Text>
+                    <Text fontSize="10px" opacity={0.8}>Ask about city services</Text>
+                  </Box>
+                </HStack>
+                <Icon as={FiMessageCircle} boxSize={4} opacity={0.6} />
+              </Flex>
+
+              {/* Preview Messages */}
+              <VStack flex={1} bg="gray.50" px={3} py={3} spacing={2} align="stretch" overflow="hidden">
+                {/* Welcome */}
+                <Flex justify="center" py={4}>
+                  <VStack spacing={1} color="gray.400">
+                    <Icon as={FiMessageCircle} boxSize={6} />
+                    <Text fontSize="11px" textAlign="center" maxW="200px">
+                      {settings.welcomeMessage || "Hi! Ask me anything about city services."}
+                    </Text>
+                  </VStack>
+                </Flex>
+
+                {/* Sample user message */}
+                <Flex justify="flex-end">
+                  <Box
+                    bg={settings.primaryColor || "#1a56db"}
+                    color="white"
+                    px={3}
+                    py={1.5}
+                    borderRadius="lg"
+                    fontSize="12px"
+                    maxW="80%"
+                  >
+                    How do I pay my water bill?
+                  </Box>
+                </Flex>
+
+                {/* Sample assistant message */}
+                <Flex justify="flex-start">
+                  <Box maxW="80%">
+                    <Box
+                      bg="white"
+                      px={3}
+                      py={1.5}
+                      borderRadius="lg"
+                      fontSize="12px"
+                      color="gray.700"
+                      border="1px solid"
+                      borderColor="gray.200"
+                    >
+                      You can pay online at the utilities portal or in person at City Hall.
+                    </Box>
+                    {settings.showDepartmentBadge && (
+                      <Badge fontSize="9px" colorScheme="blue" variant="subtle" mt={1}>
+                        Utilities
+                      </Badge>
+                    )}
+                  </Box>
+                </Flex>
+              </VStack>
+
+              {/* Preview Input */}
+              <HStack px={3} py={2} borderTop="1px solid" borderColor="gray.200" bg="white">
+                <Box
+                  flex={1}
+                  bg="gray.50"
+                  borderRadius="full"
+                  px={3}
+                  py={1.5}
+                  fontSize="11px"
+                  color="gray.400"
+                >
+                  Type your question...
+                </Box>
+                <Flex
+                  w="28px"
+                  h="28px"
+                  bg={settings.primaryColor || "#1a56db"}
+                  borderRadius="full"
+                  align="center"
+                  justify="center"
+                  flexShrink={0}
+                >
+                  <Icon as={FiSend} boxSize={3} color="white" />
+                </Flex>
+              </HStack>
+            </Box>
+          </Flex>
         </Box>
 
         {/* Embed Code */}

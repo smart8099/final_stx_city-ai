@@ -16,6 +16,7 @@ import {
 } from "@chakra-ui/react";
 import {
   FiUsers,
+  FiUser,
   FiPlus,
   FiTrash2,
   FiPhone,
@@ -41,6 +42,8 @@ export default function DepartmentsPage() {
   const [newDept, setNewDept] = useState({ name: "", contactEmail: "", contactPhone: "" });
   const [errors, setErrors] = useState<{ email?: string; phone?: string }>({});
   const [editErrors, setEditErrors] = useState<{ email?: string; phone?: string }>({});
+  const [newMember, setNewMember] = useState({ firstName: "", lastName: "", email: "" });
+  const [memberErrors, setMemberErrors] = useState<{ firstName?: string; lastName?: string; email?: string }>({});
 
   const validateEmail = (email: string) => {
     if (!email.trim()) return undefined;
@@ -79,6 +82,7 @@ export default function DepartmentsPage() {
       contactPhone: newDept.contactPhone.trim(),
       keywords: [],
       escalationEnabled: false,
+      members: [],
     };
     addDepartment(dept);
     setNewDept({ name: "", contactEmail: "", contactPhone: "" });
@@ -105,6 +109,32 @@ export default function DepartmentsPage() {
     const dept = departments.find((d) => d.id === deptId);
     if (dept) {
       updateDepartment(deptId, { keywords: dept.keywords.filter((k) => k !== keyword) });
+    }
+  };
+
+  const handleAddMember = (deptId: string) => {
+    const errs: { firstName?: string; lastName?: string; email?: string } = {};
+    if (!newMember.firstName.trim()) errs.firstName = "First name is required";
+    if (!newMember.lastName.trim()) errs.lastName = "Last name is required";
+    if (!newMember.email.trim()) { errs.email = "Email is required"; }
+    else { const emailErr = validateEmail(newMember.email); if (emailErr) errs.email = emailErr; }
+    if (Object.keys(errs).length > 0) { setMemberErrors(errs); return; }
+    const dept = departments.find((d) => d.id === deptId);
+    if (dept) {
+      const exists = (dept.members || []).some((m) => m.email.toLowerCase() === newMember.email.trim().toLowerCase());
+      if (exists) { setMemberErrors({ email: "Member with this email already exists" }); return; }
+      updateDepartment(deptId, {
+        members: [...(dept.members || []), { id: `member-${Date.now()}`, firstName: newMember.firstName.trim(), lastName: newMember.lastName.trim(), email: newMember.email.trim() }],
+      });
+    }
+    setNewMember({ firstName: "", lastName: "", email: "" });
+    setMemberErrors({});
+  };
+
+  const handleRemoveMember = (deptId: string, memberId: string) => {
+    const dept = departments.find((d) => d.id === deptId);
+    if (dept) {
+      updateDepartment(deptId, { members: (dept.members || []).filter((m) => m.id !== memberId) });
     }
   };
 
@@ -325,6 +355,75 @@ export default function DepartmentsPage() {
                         {editErrors.phone && <Text fontSize="xs" color="red.500" mt={1}>{editErrors.phone}</Text>}
                       </Box>
                     </HStack>
+
+                    {/* Members */}
+                    <Box pt={2} borderTop="1px solid" borderColor="gray.100">
+                      <HStack spacing={1} mb={2}>
+                        <Icon as={FiUser} boxSize={3} color="gray.400" />
+                        <Text fontSize="xs" fontWeight="500" color="gray.500">Members</Text>
+                        {(dept.members || []).length > 0 && (
+                          <Badge fontSize="9px" colorScheme="gray" borderRadius="full" px={1.5}>
+                            {(dept.members || []).length}
+                          </Badge>
+                        )}
+                      </HStack>
+                      <VStack spacing={1.5} align="stretch" mb={2}>
+                        {(dept.members || []).map((member) => (
+                          <HStack key={member.id} justify="space-between" bg="gray.50" px={3} py={1.5} borderRadius="md">
+                            <HStack spacing={2}>
+                              <Text fontSize="xs" fontWeight="500" color="gray.700">{member.firstName} {member.lastName}</Text>
+                              <Text fontSize="xs" color="gray.400">{member.email}</Text>
+                            </HStack>
+                            <IconButton
+                              aria-label="Remove member"
+                              icon={<Icon as={FiX} boxSize={3} />}
+                              size="xs"
+                              variant="ghost"
+                              color="gray.400"
+                              _hover={{ color: "red.500" }}
+                              onClick={() => handleRemoveMember(dept.id, member.id)}
+                            />
+                          </HStack>
+                        ))}
+                      </VStack>
+                      <HStack align="start">
+                        <Box flex={1}>
+                          <Input
+                            size="sm"
+                            placeholder="First Name"
+                            value={newMember.firstName}
+                            isInvalid={!!memberErrors.firstName}
+                            onChange={(e) => { setNewMember({ ...newMember, firstName: e.target.value }); setMemberErrors((prev) => ({ ...prev, firstName: undefined })); }}
+                          />
+                          {memberErrors.firstName && <Text fontSize="xs" color="red.500" mt={1}>{memberErrors.firstName}</Text>}
+                        </Box>
+                        <Box flex={1}>
+                          <Input
+                            size="sm"
+                            placeholder="Last Name"
+                            value={newMember.lastName}
+                            isInvalid={!!memberErrors.lastName}
+                            onChange={(e) => { setNewMember({ ...newMember, lastName: e.target.value }); setMemberErrors((prev) => ({ ...prev, lastName: undefined })); }}
+                          />
+                          {memberErrors.lastName && <Text fontSize="xs" color="red.500" mt={1}>{memberErrors.lastName}</Text>}
+                        </Box>
+                        <Box flex={1}>
+                          <Input
+                            size="sm"
+                            placeholder="Email"
+                            type="email"
+                            value={newMember.email}
+                            isInvalid={!!memberErrors.email}
+                            onChange={(e) => { setNewMember({ ...newMember, email: e.target.value }); setMemberErrors((prev) => ({ ...prev, email: undefined })); }}
+                            onKeyDown={(e) => e.key === "Enter" && handleAddMember(dept.id)}
+                          />
+                          {memberErrors.email && <Text fontSize="xs" color="red.500" mt={1}>{memberErrors.email}</Text>}
+                        </Box>
+                        <Button size="sm" onClick={() => handleAddMember(dept.id)} leftIcon={<Icon as={FiPlus} />} flexShrink={0}>
+                          Add
+                        </Button>
+                      </HStack>
+                    </Box>
                   </VStack>
                 </Box>
               )}
