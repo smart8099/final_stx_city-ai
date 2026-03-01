@@ -249,7 +249,7 @@ export default function AnalyticsPage() {
                     fontSize="10px"
                     textTransform="capitalize"
                   >
-                    {q.status}
+                    {q.status === "resolved" ? "Solved" : q.status}
                   </Badge>
                 </Flex>
               ))}
