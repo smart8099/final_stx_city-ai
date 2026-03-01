@@ -38,7 +38,7 @@ export default function AnalyticsPage() {
   const stats = useMemo(() => {
     const total = conversations.length;
     const resolved = conversations.filter((c) => c.status === "resolved").length;
-    const escalated = conversations.filter((c) => c.status === "escalated").length;
+    const escalated = conversations.filter((c) => c.status === "escalated" || c.wasEscalated).length;
     const resolutionRate = total > 0 ? Math.round((resolved / total) * 100) : 0;
     const escalationRate = total > 0 ? Math.round((escalated / total) * 100) : 0;
     const totalMessages = conversations.reduce((sum, c) => sum + c.messages.length, 0);
@@ -132,7 +132,7 @@ export default function AnalyticsPage() {
         <StatCard
           label="Resolution Rate"
           value={stats.total > 0 ? `${stats.resolutionRate}%` : "--"}
-          sub={`${stats.resolved} resolved`}
+          sub={`${stats.resolved} solved`}
           icon={FiCheckCircle}
           color="green"
         />

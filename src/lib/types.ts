@@ -25,6 +25,7 @@ export interface Conversation {
   intent?: string;
   priority?: "low" | "normal" | "high" | "urgent";
   assignedTo?: string;
+  wasEscalated?: boolean;
   notes?: InternalNote[];
   messages: Message[];
   startedAt: string;

@@ -40,7 +40,7 @@ export default function DepartmentsPage() {
   const [newKeyword, setNewKeyword] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [newDept, setNewDept] = useState({ name: "", contactEmail: "", contactPhone: "" });
-  const [errors, setErrors] = useState<{ email?: string; phone?: string }>({});
+  const [errors, setErrors] = useState<{ name?: string; email?: string; phone?: string }>({});
   const [editErrors, setEditErrors] = useState<{ email?: string; phone?: string }>({});
   const [newMember, setNewMember] = useState({ firstName: "", lastName: "", email: "" });
   const [memberErrors, setMemberErrors] = useState<{ firstName?: string; lastName?: string; email?: string }>({});
@@ -53,10 +53,6 @@ export default function DepartmentsPage() {
 
   const validatePhone = (phone: string) => {
     if (!phone.trim()) return undefined;
-    // Only allow digits, spaces, hyphens, parentheses, dots, and + prefix
-    if (!/^[\d\s\-\(\)\+\.]+$/.test(phone.trim())) return "Only numbers, spaces, hyphens, and parentheses allowed";
-    // + only allowed at the start
-    if (phone.includes("+") && phone.trim().indexOf("+") !== 0) return "'+' only allowed at the start";
     const digits = phone.replace(/\D/g, "");
     if (digits.length === 0) return "Enter a valid phone number";
     if (digits.length < 10) return `Too few digits (${digits.length}/10 minimum)`;
@@ -64,16 +60,23 @@ export default function DepartmentsPage() {
     return undefined;
   };
 
+  const formatPhone = (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length <= 3) return digits.length > 0 ? `(${digits}` : "";
+    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+  };
+
   useEffect(() => {
     setTenantSlug(slug);
   }, [slug, setTenantSlug]);
 
   const handleAdd = () => {
-    if (!newDept.name.trim()) return;
-    const emailErr = validateEmail(newDept.contactEmail);
-    const phoneErr = validatePhone(newDept.contactPhone);
-    setErrors({ email: emailErr, phone: phoneErr });
-    if (emailErr || phoneErr) return;
+    const nameErr = !newDept.name.trim() ? "Department name is required" : undefined;
+    const emailErr = !newDept.contactEmail.trim() ? "Contact email is required" : validateEmail(newDept.contactEmail);
+    const phoneErr = !newDept.contactPhone.trim() ? "Contact phone is required" : validatePhone(newDept.contactPhone);
+    setErrors({ name: nameErr, email: emailErr, phone: phoneErr });
+    if (nameErr || emailErr || phoneErr) return;
 
     const dept: DepartmentConfig = {
       id: `dept-${Date.now()}`,
@@ -161,13 +164,17 @@ export default function DepartmentsPage() {
         <Box bg="white" border="1px solid" borderColor="blue.200" borderRadius="lg" p={5} mb={4}>
           <Text fontWeight="600" fontSize="sm" color="gray.700" mb={3}>New Department</Text>
           <VStack spacing={3} align="stretch">
-            <Input
-              size="sm"
-              placeholder="Department name"
-              value={newDept.name}
-              onChange={(e) => setNewDept({ ...newDept, name: e.target.value })}
-              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-            />
+            <Box>
+              <Input
+                size="sm"
+                placeholder="Department name"
+                value={newDept.name}
+                isInvalid={!!errors.name}
+                onChange={(e) => { setNewDept({ ...newDept, name: e.target.value }); setErrors({ ...errors, name: undefined }); }}
+                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+              />
+              {errors.name && <Text fontSize="xs" color="red.500" mt={1}>{errors.name}</Text>}
+            </Box>
             <Box>
               <HStack>
                 <Box flex={1}>
@@ -188,7 +195,7 @@ export default function DepartmentsPage() {
                     type="tel"
                     value={newDept.contactPhone}
                     isInvalid={!!errors.phone}
-                    onChange={(e) => { setNewDept({ ...newDept, contactPhone: e.target.value }); setErrors({ ...errors, phone: validatePhone(e.target.value) }); }}
+                    onChange={(e) => { const formatted = formatPhone(e.target.value); setNewDept({ ...newDept, contactPhone: formatted }); setErrors({ ...errors, phone: undefined }); }}
                   />
                   {errors.phone && <Text fontSize="xs" color="red.500" mt={1}>{errors.phone}</Text>}
                 </Box>
@@ -340,15 +347,14 @@ export default function DepartmentsPage() {
                       <Box flex={1}>
                         <Input
                           size="sm"
-                          placeholder="Phone"
+                          placeholder="Contact phone"
                           type="tel"
                           value={dept.contactPhone}
                           isInvalid={!!editErrors.phone}
                           onChange={(e) => {
-                            const val = e.target.value;
-                            updateDepartment(dept.id, { contactPhone: val });
-                            const err = validatePhone(val);
-                            setEditErrors((prev) => ({ ...prev, phone: err }));
+                            const formatted = formatPhone(e.target.value);
+                            updateDepartment(dept.id, { contactPhone: formatted });
+                            setEditErrors((prev) => ({ ...prev, phone: undefined }));
                           }}
                           onBlur={() => setEditErrors((prev) => ({ ...prev, phone: validatePhone(dept.contactPhone) }))}
                         />

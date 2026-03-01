@@ -33,7 +33,13 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     const stored = localStorage.getItem(key);
     if (stored) {
       try {
-        setConversations(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        // Migrate: set wasEscalated for any conversation currently or previously escalated
+        const migrated = parsed.map((c: any) => ({
+          ...c,
+          wasEscalated: c.wasEscalated || c.status === "escalated" ? true : undefined,
+        }));
+        setConversations(migrated);
       } catch {
         setConversations([]);
       }
@@ -66,6 +72,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
               department: message.department || c.department,
               intent: message.intent || c.intent,
               status: message.intent === "emergency" ? "escalated" : c.status,
+              wasEscalated: message.intent === "emergency" ? true : c.wasEscalated,
             }
           : c
       )
@@ -74,14 +81,22 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
 
   const updateConversation = useCallback((id: string, updates: Partial<Conversation>) => {
     setConversations((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
+      prev.map((c) => {
+        if (c.id !== id) return c;
+        const wasEscalated = c.wasEscalated || c.status === "escalated" || updates.status === "escalated";
+        return { ...c, ...updates, wasEscalated: wasEscalated || undefined };
+      })
     );
   }, []);
 
   const bulkUpdateConversations = useCallback((ids: string[], updates: Partial<Conversation>) => {
     const idSet = new Set(ids);
     setConversations((prev) =>
-      prev.map((c) => (idSet.has(c.id) ? { ...c, ...updates } : c))
+      prev.map((c) => {
+        if (!idSet.has(c.id)) return c;
+        const wasEscalated = c.wasEscalated || c.status === "escalated" || updates.status === "escalated";
+        return { ...c, ...updates, wasEscalated: wasEscalated || undefined };
+      })
     );
   }, []);
 

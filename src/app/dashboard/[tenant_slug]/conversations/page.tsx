@@ -9,7 +9,7 @@ import { useConversations } from "@/lib/conversation-store";
 import { useDepartments } from "@/lib/department-store";
 import { useSettings } from "@/lib/settings-store";
 import { useMacros } from "@/lib/macro-store";
-import { InternalNote, Message } from "@/lib/types";
+import { Conversation, InternalNote, Message } from "@/lib/types";
 import TicketSidebar, { ViewFilter } from "@/components/TicketSidebar";
 import TicketTable from "@/components/TicketTable";
 import TicketDetailPanel from "@/components/TicketDetailPanel";
@@ -37,6 +37,7 @@ export default function ConversationsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [recentlyViewed, setRecentlyViewed] = useState<{ id: string; viewedAt: number }[]>([]);
 
   useEffect(() => {
     setTenantSlug(slug);
@@ -49,6 +50,24 @@ export default function ConversationsPage() {
     setCurrentPage(1);
   }, [activeView, searchQuery]);
 
+  // Filter out entries older than 24 hours
+  const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+  const recentlyViewedIds = useMemo(() => {
+    const now = Date.now();
+    return recentlyViewed
+      .filter((rv) => now - rv.viewedAt < TWENTY_FOUR_HOURS)
+      .map((rv) => rv.id);
+  }, [recentlyViewed]);
+
+  const handleSelectTicket = useCallback((id: string) => {
+    setSelectedId(id);
+    setRecentlyViewed((prev) => {
+      const now = Date.now();
+      const filtered = prev.filter((rv) => rv.id !== id && now - rv.viewedAt < TWENTY_FOUR_HOURS);
+      return [{ id, viewedAt: now }, ...filtered];
+    });
+  }, []);
+
   const filtered = useMemo(() => {
     const sorted = [...conversations].sort(
       (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
@@ -60,8 +79,9 @@ export default function ConversationsPage() {
     if (activeView === "view:mine") {
       return myName ? sorted.filter((c) => c.assignedTo === myName) : [];
     }
-    if (activeView === "view:unassigned") {
-      return sorted.filter((c) => !c.assignedTo);
+    if (activeView === "view:recent") {
+      const idSet = new Set(recentlyViewedIds);
+      return sorted.filter((c) => idSet.has(c.id));
     }
 
     // Status filter
@@ -79,15 +99,17 @@ export default function ConversationsPage() {
     }
 
     return sorted;
-  }, [conversations, activeView, myName]);
+  }, [conversations, activeView, myName, recentlyViewedIds]);
 
   const selectedConversation = selectedId ? getConversation(selectedId) || null : null;
 
   const handleStatusChange = useCallback((id: string, status: string) => {
-    updateConversation(id, {
+    const updates: Partial<Conversation> = {
       status: status as "new" | "open" | "resolved" | "escalated",
       updatedAt: new Date().toISOString(),
-    });
+    };
+    if (status === "escalated") updates.wasEscalated = true;
+    updateConversation(id, updates);
   }, [updateConversation]);
 
   const handleDepartmentChange = useCallback((id: string, department: string) => {
@@ -126,10 +148,12 @@ export default function ConversationsPage() {
   }, [addMessage]);
 
   const handleBulkStatusChange = useCallback((ids: string[], status: string) => {
-    bulkUpdateConversations(ids, {
+    const updates: Partial<Conversation> = {
       status: status as "new" | "open" | "resolved" | "escalated",
       updatedAt: new Date().toISOString(),
-    });
+    };
+    if (status === "escalated") updates.wasEscalated = true;
+    bulkUpdateConversations(ids, updates);
     setSelectedIds([]);
   }, [bulkUpdateConversations]);
 
@@ -171,6 +195,7 @@ export default function ConversationsPage() {
       <TicketSidebar
         conversations={conversations}
         activeView={activeView}
+        recentlyViewedIds={recentlyViewedIds}
         onViewChange={setActiveView}
       />
       {selectedConversation ? (
@@ -204,7 +229,7 @@ export default function ConversationsPage() {
             searchQuery={searchQuery}
             selectedIds={selectedIds}
             onPageChange={setCurrentPage}
-            onSelect={setSelectedId}
+            onSelect={handleSelectTicket}
             onSearchChange={setSearchQuery}
             onSelectionChange={setSelectedIds}
             onBulkStatusChange={handleBulkStatusChange}

@@ -21,6 +21,7 @@ export type ViewFilter = string;
 interface Props {
   conversations: Conversation[];
   activeView: ViewFilter;
+  recentlyViewedIds: string[];
   onViewChange: (view: ViewFilter) => void;
 }
 
@@ -32,7 +33,7 @@ const STATUS_VIEWS: { key: string; label: string; icon: typeof FiInbox; color: s
 
 const QUICK_VIEWS: { key: string; label: string; icon: typeof FiClock; color: string }[] = [
   { key: "view:mine", label: "My Tickets", icon: FiUser, color: "blue.500" },
-  { key: "view:unassigned", label: "Unassigned", icon: FiMinusCircle, color: "orange.500" },
+  { key: "view:recent", label: "Recently Viewed", icon: FiClock, color: "gray.500" },
 ];
 
 function SidebarItem({
@@ -85,7 +86,7 @@ function SidebarItem({
   );
 }
 
-export default function TicketSidebar({ conversations, activeView, onViewChange }: Props) {
+export default function TicketSidebar({ conversations, activeView, recentlyViewedIds, onViewChange }: Props) {
   const { departments } = useDepartments();
   const { user } = useUser();
   const myName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
@@ -103,8 +104,8 @@ export default function TicketSidebar({ conversations, activeView, onViewChange 
     if (key === "view:mine") {
       return myName ? conversations.filter((c) => c.assignedTo === myName).length : 0;
     }
-    if (key === "view:unassigned") {
-      return conversations.filter((c) => !c.assignedTo).length;
+    if (key === "view:recent") {
+      return recentlyViewedIds.length;
     }
     return 0;
   };

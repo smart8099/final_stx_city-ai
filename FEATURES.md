@@ -52,7 +52,7 @@ The sidebar also includes:
 
 ### Quick Views
 - **My Tickets** — Shows only tickets assigned to the current logged-in user
-- **Unassigned** — Shows tickets with no assignee, so team members can pick them up
+- **Recently Viewed** — Shows tickets the user has clicked on in the last 24 hours
 
 ### Status Filters
 - **All Tickets** — Every conversation regardless of status
@@ -68,7 +68,6 @@ The sidebar also includes:
 - **Search bar** — Filters tickets in real-time by subject, ID, or department
 - **Bulk actions** — Checkbox selection with select-all; bulk Set Status and Set Priority via dropdown menus
 - **Priority badges** — Urgent (red), High (orange), Normal (hidden for cleanliness), Low (gray)
-- **SLA/Overdue indicator** — Red clock icon appears next to tickets open longer than 24 hours
 - **Dynamic pagination** — Automatically calculates how many rows fit the viewport and paginates accordingly
 - Thin, Zendesk-style rows with minimal padding
 
@@ -105,7 +104,9 @@ Opens when clicking a ticket. Two-column layout:
 
 ### Department Configuration
 - Add departments with name, contact email, and contact phone
-- Email validation (format check) and phone validation (10-15 digits, allows spaces, hyphens, parentheses, + prefix)
+- All fields required with validation — "Department name is required", "Contact email is required", "Contact phone is required"
+- Email validation (format check) and phone auto-formatting as you type: `(XXX) XXX-XXXX`
+- Phone validation (10-15 digits)
 - Edit and delete departments
 
 ### Routing Keywords
@@ -142,7 +143,7 @@ Opens when clicking a ticket. Two-column layout:
 
 All metrics are **live** — calculated from actual conversation data in real-time:
 
-- **Stat Cards**: Total conversations, resolution rate (%), escalation rate (%), average messages per conversation
+- **Stat Cards**: Total conversations, resolution rate (%), escalation rate (% — persists even after tickets are solved), average messages per conversation
 - **Department Breakdown**: Shows how many conversations each department handles
 - **Intent Breakdown**: Distribution of AI-classified intent types (Info Request, Process Guidance, Complaint, Emergency, Out of Scope)
 - **Recent Questions**: Latest 10 conversations with status badges
