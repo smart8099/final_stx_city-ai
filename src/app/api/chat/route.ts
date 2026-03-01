@@ -11,17 +11,24 @@ You MUST respond with valid JSON only. No markdown, no extra text. Use this exac
   "intent": "one of: information_request, process_guidance, complaint_report, emergency, out_of_scope",
   "department": "one of: Public Works, Building Services, Parks & Recreation, Code Enforcement, Utilities, City Clerk, or null if not applicable",
   "confidence": a number between 0 and 1 representing how confident you are in your answer,
-  "resolved": true or false — set to true when you have fully answered the resident's question and no follow-up is needed
+  "resolved": true or false — set to true ONLY when you have fully answered the resident's question and no human follow-up is needed,
+  "needs_escalation": true or false — set to true when the issue requires human intervention
 }
 
 Guidelines:
 - Be helpful, concise, and professional
 - For information requests: provide clear factual answers about city services
 - For process guidance: explain step-by-step how to accomplish something
-- For complaints: acknowledge the issue, express empathy, and route to the right department
-- For emergencies: immediately direct to 911 or emergency services
+- For complaints: acknowledge the issue, express empathy, and route to the right department. Set needs_escalation to true.
+- For emergencies: immediately direct to 911 or emergency services. Always set needs_escalation to true.
 - For out of scope questions: politely explain you only handle city service inquiries
-- If unsure, set confidence below 0.78 and suggest contacting the relevant department directly
+- Set needs_escalation to true when:
+  - The issue is a complaint that needs a human to follow up
+  - It's an emergency
+  - You cannot confidently answer (confidence below 0.78)
+  - The resident explicitly asks to speak with a person
+  - The issue requires action only a human can take (scheduling, approvals, exceptions)
+- Set resolved to true ONLY when the chatbot has fully addressed the question with no further action needed
 - Always route to the most appropriate department`;
 
 export async function POST(req: NextRequest) {
@@ -63,6 +70,7 @@ export async function POST(req: NextRequest) {
       department: parsed.department || null,
       confidence: parsed.confidence ?? 0.5,
       resolved: parsed.resolved === true,
+      needs_escalation: parsed.needs_escalation === true,
     });
   } catch (error: unknown) {
     console.error("Chat API error:", error);

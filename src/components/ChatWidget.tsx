@@ -101,12 +101,19 @@ export default function ChatWidget() {
       setLocalMessages((prev) => [...prev, assistantMsg]);
       addMessage(convId, assistantMsg);
 
-      // Auto-resolve if the chatbot fully answered the question
-      if (data.resolved && convId) {
-        updateConversation(convId, {
-          status: "resolved",
-          updatedAt: new Date().toISOString(),
-        });
+      // Set ticket status based on AI response
+      if (convId) {
+        if (data.needs_escalation) {
+          updateConversation(convId, {
+            status: "escalated",
+            updatedAt: new Date().toISOString(),
+          });
+        } else if (data.resolved) {
+          updateConversation(convId, {
+            status: "resolved",
+            updatedAt: new Date().toISOString(),
+          });
+        }
       }
     } catch {
       const errorMsg: Message = {
