@@ -11,12 +11,20 @@ import { router } from "./init";
 import { chatRouter } from "./routers/chat";
 import { tenantsRouter } from "./routers/tenants";
 import { departmentsRouter } from "./routers/departments";
+import { knowledgeBaseRouter } from "./routers/knowledgeBase";
+import { conversationsAdminRouter } from "./routers/conversationsAdmin";
+import { settingsRouter } from "./routers/settings";
 import { healthRouter } from "./routers/health";
+import { macrosRouter } from "./routers/macros";
 
 export const appRouter = router({
   chat: chatRouter,
   tenants: tenantsRouter,
   departments: departmentsRouter,
+  knowledgeBase: knowledgeBaseRouter,
+  conversationsAdmin: conversationsAdminRouter,
+  settings: settingsRouter,
+  macros: macrosRouter,
   health: healthRouter,
 });
 

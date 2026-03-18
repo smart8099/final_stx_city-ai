@@ -14,10 +14,18 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ slug: st
     return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
   }
 
+  const ws = (tenant.widgetSettings ?? {}) as Record<string, unknown>;
+
   return NextResponse.json({
     slug: tenant.slug,
     name: tenant.name,
     website_domain: tenant.websiteDomain,
     api_key: tenant.apiKey,
+    brand_color: (ws.primaryColor as string) ?? undefined,
+    greeting: (ws.welcomeMessage as string) ?? undefined,
+    city_name: (ws.cityName as string) ?? undefined,
+    logo_url: (ws.logoUrl as string) ?? undefined,
+    auto_open: (ws.autoOpen as boolean) ?? false,
+    position: (ws.position as string) ?? "bottom-right",
   });
 }

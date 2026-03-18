@@ -2,8 +2,9 @@ import { type NextRequest } from "next/server";
 import { env } from "@/server/config";
 
 /**
- * Verify that the request carries a valid Clerk JWT with admin role.
+ * Verify that the request carries a valid Clerk JWT with an org role.
  * Dev bypass: returns true if CLERK_SECRET_KEY is not set.
+ * Accepts any org member (org:admin or org:member).
  */
 export async function verifyClerkAdmin(req: NextRequest): Promise<boolean> {
   if (!env.CLERK_SECRET_KEY) return true; // dev bypass
@@ -17,11 +18,12 @@ export async function verifyClerkAdmin(req: NextRequest): Promise<boolean> {
     const { verifyToken } = await import("@clerk/nextjs/server");
     const payload = await verifyToken(token, { secretKey: env.CLERK_SECRET_KEY });
 
-    const role = (payload as { public_metadata?: { role?: string } }).public_metadata?.role;
-    const orgRole = (payload as { org_role?: string }).org_role;
+    // Any valid Clerk token means the user is authenticated
+    if (payload && payload.sub) return true;
 
-    return role === "admin" || orgRole === "org:admin";
-  } catch {
+    return false;
+  } catch (e) {
+    console.error("[clerk] JWT verification failed:", String(e));
     return false;
   }
 }

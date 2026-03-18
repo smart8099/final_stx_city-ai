@@ -7,10 +7,12 @@ import {
   updateTenant,
   deleteTenant,
   rotateTenantKey,
+  generateApiKey,
 } from "@/server/services/tenant_admin_service";
 import { listDepartments } from "@/server/services/department_service";
 import { clearAllTenantCaches } from "@/server/services/cache_service";
 import { getTenantBySlug } from "@/server/services/tenant_service";
+import { tenants } from "@/server/db/schema";
 
 const TenantCreateInput = z.object({
   name: z.string().min(1).max(255),
@@ -54,8 +56,41 @@ export const tenantsRouter = router({
     .query(async ({ ctx, input }) => {
       const tenant = await getTenantBySlug(ctx.db, input.slug);
       if (!tenant) throw new Error("Tenant not found");
-      // Return only public fields for widget use
       return {
+        id: tenant.id,
+        slug: tenant.slug,
+        name: tenant.name,
+        websiteDomain: tenant.websiteDomain,
+        apiKey: tenant.apiKey,
+      };
+    }),
+
+  // Auto-provision: find tenant by slug or create it if it doesn't exist
+  getOrCreateBySlug: adminProcedure
+    .input(z.object({ slug: z.string(), orgName: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await getTenantBySlug(ctx.db, input.slug);
+      if (existing) {
+        return {
+          id: existing.id,
+          slug: existing.slug,
+          name: existing.name,
+          websiteDomain: existing.websiteDomain,
+          apiKey: existing.apiKey,
+        };
+      }
+
+      // Auto-create tenant for this Clerk org
+      const name = input.orgName || input.slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      const tenant = await createTenant(ctx.db, {
+        name,
+        slug: input.slug,
+        websiteDomain: `${input.slug}.example.com`,
+        searchDomains: [],
+      });
+
+      return {
+        id: tenant.id,
         slug: tenant.slug,
         name: tenant.name,
         websiteDomain: tenant.websiteDomain,

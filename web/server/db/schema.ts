@@ -30,6 +30,19 @@ export const tenants = pgTable("tenants", {
   isActive: boolean("is_active").notNull().default(true),
   dailyRequestQuota: integer("daily_request_quota"),
   llmApiKey: varchar("llm_api_key", { length: 500 }),
+  widgetSettings: json("widget_settings").$type<{
+    cityName?: string;
+    primaryColor?: string;
+    welcomeMessage?: string;
+    logoUrl?: string;
+    autoOpen?: boolean;
+    position?: string; // "bottom-right" | "bottom-left" | "top-right" | "top-left"
+    slaFirstResponseHours?: number;   // default 24
+    slaResolutionHours?: number;      // default 72
+    slaExcludeWeekends?: boolean;     // default true
+    slaBusinessHoursStart?: number;   // e.g. 8 (8 AM), null = 24/7
+    slaBusinessHoursEnd?: number;     // e.g. 17 (5 PM), null = 24/7
+  }>(),
   ...timestamps,
 });
 
@@ -55,6 +68,40 @@ export const departments = pgTable("departments", {
   ...timestamps,
 });
 
+// ── Documents (Knowledge Base) ────────────────────────────────────────────────
+
+export const documents = pgTable("documents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  departmentId: uuid("department_id").references(() => departments.id, {
+    onDelete: "set null",
+  }),
+  name: varchar("name", { length: 500 }).notNull(),
+  savedAs: varchar("saved_as", { length: 500 }).notNull(),
+  type: varchar("type", { length: 10 }).notNull(), // "pdf" | "txt"
+  size: integer("size").notNull(), // bytes
+  status: varchar("status", { length: 20 }).notNull().default("processing"), // "processing" | "ingested" | "failed"
+  textContent: text("text_content"),
+  ...timestamps,
+});
+
+// ── FAQs (Knowledge Base) ────────────────────────────────────────────────────
+
+export const faqs = pgTable("faqs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  departmentId: uuid("department_id").references(() => departments.id, {
+    onDelete: "set null",
+  }),
+  question: text("question").notNull(),
+  answer: text("answer").notNull(),
+  ...timestamps,
+});
+
 // ── Conversations ─────────────────────────────────────────────────────────────
 
 export const conversations = pgTable("conversations", {
@@ -63,6 +110,18 @@ export const conversations = pgTable("conversations", {
     .notNull()
     .references(() => tenants.id, { onDelete: "cascade" }),
   sessionId: varchar("session_id", { length: 255 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("new"), // new | open | resolved | escalated
+  priority: varchar("priority", { length: 20 }).notNull().default("normal"), // low | normal | high | urgent
+  departmentId: uuid("department_id").references(() => departments.id, {
+    onDelete: "set null",
+  }),
+  intent: varchar("intent", { length: 100 }),
+  assignedTo: varchar("assigned_to", { length: 255 }),
+  wasEscalated: boolean("was_escalated").notNull().default(false),
+  // SLA tracking timestamps
+  firstResponseAt: timestamp("first_response_at", { withTimezone: true }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  escalatedAt: timestamp("escalated_at", { withTimezone: true }),
   ...timestamps,
 });
 
@@ -78,20 +137,69 @@ export const messages = pgTable("messages", {
   ...timestamps,
 });
 
+// ── Internal Notes ────────────────────────────────────────────────────────────
+
+export const internalNotes = pgTable("internal_notes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  conversationId: uuid("conversation_id")
+    .notNull()
+    .references(() => conversations.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  authorId: varchar("author_id", { length: 255 }).notNull(),
+  authorName: varchar("author_name", { length: 255 }).notNull(),
+  ...timestamps,
+});
+
+// ── Macros ────────────────────────────────────────────────────────────────────
+
+export const macros = pgTable("macros", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 255 }).notNull(),
+  content: text("content").notNull(),
+  ...timestamps,
+});
+
 // ── Relations ─────────────────────────────────────────────────────────────────
 
 export const tenantsRelations = relations(tenants, ({ many }) => ({
   departments: many(departments),
+  documents: many(documents),
+  faqs: many(faqs),
   conversations: many(conversations),
+  macros: many(macros),
 }));
 
-export const departmentsRelations = relations(departments, ({ one }) => ({
+export const departmentsRelations = relations(departments, ({ one, many }) => ({
   tenant: one(tenants, { fields: [departments.tenantId], references: [tenants.id] }),
+  documents: many(documents),
+  faqs: many(faqs),
+}));
+
+export const documentsRelations = relations(documents, ({ one }) => ({
+  tenant: one(tenants, { fields: [documents.tenantId], references: [tenants.id] }),
+  department: one(departments, { fields: [documents.departmentId], references: [departments.id] }),
+}));
+
+export const faqsRelations = relations(faqs, ({ one }) => ({
+  tenant: one(tenants, { fields: [faqs.tenantId], references: [tenants.id] }),
+  department: one(departments, { fields: [faqs.departmentId], references: [departments.id] }),
 }));
 
 export const conversationsRelations = relations(conversations, ({ one, many }) => ({
   tenant: one(tenants, { fields: [conversations.tenantId], references: [tenants.id] }),
+  department: one(departments, { fields: [conversations.departmentId], references: [departments.id] }),
   messages: many(messages),
+  notes: many(internalNotes),
+}));
+
+export const internalNotesRelations = relations(internalNotes, ({ one }) => ({
+  conversation: one(conversations, {
+    fields: [internalNotes.conversationId],
+    references: [conversations.id],
+  }),
 }));
 
 export const messagesRelations = relations(messages, ({ one }) => ({
@@ -101,13 +209,25 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   }),
 }));
 
+export const macrosRelations = relations(macros, ({ one }) => ({
+  tenant: one(tenants, { fields: [macros.tenantId], references: [tenants.id] }),
+}));
+
 // ── Inferred types ────────────────────────────────────────────────────────────
 
 export type Tenant = typeof tenants.$inferSelect;
 export type NewTenant = typeof tenants.$inferInsert;
 export type Department = typeof departments.$inferSelect;
 export type NewDepartment = typeof departments.$inferInsert;
+export type Document = typeof documents.$inferSelect;
+export type NewDocument = typeof documents.$inferInsert;
+export type FAQ = typeof faqs.$inferSelect;
+export type NewFAQ = typeof faqs.$inferInsert;
 export type Conversation = typeof conversations.$inferSelect;
 export type NewConversation = typeof conversations.$inferInsert;
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
+export type InternalNote = typeof internalNotes.$inferSelect;
+export type NewInternalNote = typeof internalNotes.$inferInsert;
+export type MacroRow = typeof macros.$inferSelect;
+export type NewMacro = typeof macros.$inferInsert;

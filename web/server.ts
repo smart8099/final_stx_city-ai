@@ -19,9 +19,24 @@ import { listDepartments } from "./server/services/department_service";
 import {
   getOrCreateConversation,
   logMessage,
+  updateConversationStatus,
 } from "./server/services/conversation_service";
 import { env } from "./server/config";
 import { wsLog } from "./server/logger";
+
+// ── Conversation status detection ─────────────────────────────────────────────
+
+const RESOLVED_PATTERNS = /\b(thank(?:s| you)|got it|that(?:'s| is) helpful|perfect|awesome|great(?:,| )thanks|appreciate it|problem solved|that works|all set|no more questions)\b/i;
+
+const ESCALATED_PATTERNS = /\b(contact(?:ing)? (?:the |your )?[\w\s]*?(?:department|office|city hall|support|staff)|call (?:us|them|the)|speak (?:to|with) (?:a |an )?(?:human|representative|agent|person|staff)|visit (?:the |our )?[\w\s]*?(?:office|city hall|department)|in[- ]person assistance|human (?:agent|assistance|help|support)|transfer(?:ring)? (?:you|this)|recommend(?:ing)? (?:you )?(?:contact|call|visit|reach out))\b/i;
+
+function detectResolved(userMessage: string): boolean {
+  return RESOLVED_PATTERNS.test(userMessage);
+}
+
+function detectEscalated(assistantAnswer: string): boolean {
+  return ESCALATED_PATTERNS.test(assistantAnswer);
+}
 
 const dev = env.APP_ENV !== "production";
 const app = next({ dev });
@@ -100,9 +115,22 @@ async function handleWebSocket(ws: WebSocket) {
       const departments = await listDepartments(db, tenant.id, redis);
 
       await setCurrentTenant(tenant, async () => {
+        let conv: Awaited<ReturnType<typeof getOrCreateConversation>> | null = null;
+
         if (env.PERSIST_CHAT_MESSAGES) {
-          const conv = await getOrCreateConversation(db, tenant.id, sessionId);
+          conv = await getOrCreateConversation(db, tenant.id, sessionId);
           await logMessage(db, conv.id, "user", userMessage);
+
+          // Mark as open on first real message
+          if (conv.status === "new") {
+            await updateConversationStatus(db, conv.id, "open");
+          }
+
+          // Check if user is expressing gratitude → resolved
+          if (detectResolved(userMessage)) {
+            await updateConversationStatus(db, conv.id, "resolved");
+            log.info("Conversation auto-marked as resolved");
+          }
         }
 
         let finalAnswer = "";
@@ -117,9 +145,14 @@ async function handleWebSocket(ws: WebSocket) {
           }
         }
 
-        if (env.PERSIST_CHAT_MESSAGES) {
-          const conv = await getOrCreateConversation(db, tenant.id, sessionId);
+        if (env.PERSIST_CHAT_MESSAGES && conv) {
           await logMessage(db, conv.id, "assistant", finalAnswer);
+
+          // Check if assistant suggested contacting a department → escalated
+          if (detectEscalated(finalAnswer)) {
+            await updateConversationStatus(db, conv.id, "escalated", true);
+            log.info("Conversation auto-marked as escalated");
+          }
         }
 
         await memManager.save(sessionId, history, userMessage, finalAnswer);

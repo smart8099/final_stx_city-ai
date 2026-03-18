@@ -20,7 +20,7 @@ import {
  *
  * @returns A 64-character lowercase hex string.
  */
-function generateApiKey(): string {
+export function generateApiKey(): string {
   return randomBytes(32).toString("hex");
 }
 

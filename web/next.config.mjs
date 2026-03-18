@@ -11,6 +11,7 @@ const nextConfig = {
     "postgres",
     "ioredis",
     "@tavily/core",
+    "groq-sdk",
   ],
   // CORS headers for widget
   async headers() {

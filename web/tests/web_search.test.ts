@@ -13,6 +13,7 @@ const mockTenant: Tenant = {
   isActive: true,
   dailyRequestQuota: null,
   llmApiKey: null,
+  widgetSettings: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
