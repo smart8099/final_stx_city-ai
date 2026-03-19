@@ -62,13 +62,21 @@ export class CityAssistWidget {
       return;
     }
 
+    const displayName = this.config.city_name || this.config.name;
     const brandColor = this.config.brand_color ?? '#1a56db';
-    this.ui = new ChatUI(this.host, brandColor, this.config.name);
-
+    const logoUrl = this.config.logo_url ?? '';
     const greeting =
       this.config.greeting ??
-      `Hi! I'm the ${this.config.name} virtual assistant. How can I help you today?`;
-    this.ui.showGreeting(greeting);
+      `Hi! Ask me anything about city services.`;
+
+    this.ui = new ChatUI(this.host, {
+      brandColor,
+      cityName: displayName,
+      logoUrl,
+      greeting,
+      autoOpen: this.config.auto_open ?? false,
+      position: this.config.position ?? 'bottom-right',
+    });
 
     const wsUrl =
       this.options.wsUrl ?? `${httpToWs(this.options.apiUrl)}/api/ws`;

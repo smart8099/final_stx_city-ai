@@ -1,5 +1,14 @@
 import type { Source } from './types';
 
+export interface ChatUIOptions {
+  brandColor: string;
+  cityName: string;
+  logoUrl: string;
+  greeting: string;
+  autoOpen?: boolean;
+  position?: string; // "bottom-right" | "bottom-left" | "top-right" | "top-left"
+}
+
 const STYLES = `
   :host {
     all: initial;
@@ -11,8 +20,6 @@ const STYLES = `
 
   #launcher {
     position: fixed;
-    bottom: 24px;
-    right: 24px;
     width: 56px;
     height: 56px;
     border-radius: 50%;
@@ -29,10 +36,14 @@ const STYLES = `
   #launcher:hover { transform: scale(1.08); }
   #launcher svg { width: 26px; height: 26px; fill: #fff; }
 
+  /* Position variants */
+  :host([data-pos="bottom-right"]) #launcher { bottom: 24px; right: 24px; }
+  :host([data-pos="bottom-left"])  #launcher { bottom: 24px; left: 24px; }
+  :host([data-pos="top-right"])    #launcher { top: 24px; right: 24px; }
+  :host([data-pos="top-left"])     #launcher { top: 24px; left: 24px; }
+
   #panel {
     position: fixed;
-    bottom: 92px;
-    right: 24px;
     width: 360px;
     max-height: 560px;
     border-radius: 16px;
@@ -44,22 +55,52 @@ const STYLES = `
     z-index: 2147483646;
     transition: opacity 0.2s ease, transform 0.2s ease;
   }
+  :host([data-pos="bottom-right"]) #panel { bottom: 92px; right: 24px; }
+  :host([data-pos="bottom-left"])  #panel { bottom: 92px; left: 24px; }
+  :host([data-pos="top-right"])    #panel { top: 92px; right: 24px; }
+  :host([data-pos="top-left"])     #panel { top: 92px; left: 24px; }
+
   #panel.hidden { opacity: 0; pointer-events: none; transform: translateY(12px); }
+  :host([data-pos="top-right"]) #panel.hidden,
+  :host([data-pos="top-left"])  #panel.hidden { transform: translateY(-12px); }
 
   #header {
-    padding: 14px 16px;
+    padding: 12px 16px;
     background: var(--ca-brand, #1a56db);
     color: #fff;
     display: flex;
     align-items: center;
     justify-content: space-between;
   }
-  #header-title { font-weight: 600; font-size: 15px; }
+  #header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  #header-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    object-fit: contain;
+    background: rgba(255,255,255,0.15);
+  }
+  #header-text {
+    display: flex;
+    flex-direction: column;
+  }
+  #header-title { font-weight: 600; font-size: 14px; line-height: 1.2; }
+  #header-subtitle { font-size: 11px; opacity: 0.8; line-height: 1.2; }
+  #header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
   #close-btn {
     background: none; border: none; color: #fff; cursor: pointer;
-    padding: 4px; border-radius: 4px; line-height: 1;
-    font-size: 18px;
+    padding: 2px; line-height: 1;
+    font-size: 14px; opacity: 0.6;
   }
+  #close-btn:hover { opacity: 1; }
 
   #messages {
     flex: 1;
@@ -68,13 +109,38 @@ const STYLES = `
     display: flex;
     flex-direction: column;
     gap: 8px;
+    background: #f9fafb;
+  }
+
+  #greeting-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 16px 12px;
+    color: #9ca3af;
+  }
+  #greeting-icon {
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: #9ca3af;
+    stroke-width: 2;
+    margin-bottom: 8px;
+  }
+  #greeting-text {
+    font-size: 12px;
+    text-align: center;
+    max-width: 220px;
+    line-height: 1.5;
+    color: #9ca3af;
   }
 
   .msg {
     max-width: 82%;
-    padding: 9px 12px;
+    padding: 8px 12px;
     border-radius: 12px;
-    font-size: 14px;
+    font-size: 13px;
     word-break: break-word;
     white-space: pre-wrap;
   }
@@ -86,19 +152,20 @@ const STYLES = `
   }
   .msg.assistant {
     align-self: flex-start;
-    background: #f3f4f6;
-    color: #111827;
+    background: #fff;
+    color: #374151;
+    border: 1px solid #e5e7eb;
     border-bottom-left-radius: 4px;
   }
   .msg.streaming::after {
-    content: '▋';
+    content: '\\258B';
     animation: blink 0.8s step-start infinite;
   }
   @keyframes blink { 50% { opacity: 0; } }
 
   .sources {
     margin-top: 6px;
-    font-size: 12px;
+    font-size: 11px;
   }
   .sources a { color: var(--ca-brand, #1a56db); text-decoration: underline; display: block; }
 
@@ -107,36 +174,57 @@ const STYLES = `
     gap: 8px;
     padding: 10px 12px;
     border-top: 1px solid #e5e7eb;
+    background: #fff;
+    align-items: center;
   }
   #input {
     flex: 1;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
-    padding: 8px 12px;
-    font-size: 14px;
+    border: none;
+    border-radius: 20px;
+    padding: 8px 14px;
+    font-size: 12px;
     outline: none;
     font-family: inherit;
     resize: none;
     max-height: 80px;
+    background: #f3f4f6;
+    color: #374151;
   }
-  #input:focus { border-color: var(--ca-brand, #1a56db); }
+  #input::placeholder { color: #9ca3af; }
+  #input:focus { background: #f3f4f6; }
   #send-btn {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
     background: var(--ca-brand, #1a56db);
     color: #fff;
     border: none;
-    border-radius: 8px;
-    padding: 8px 14px;
+    border-radius: 50%;
     cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
   }
+  #send-btn svg { width: 12px; height: 12px; fill: none; stroke: #fff; stroke-width: 2; }
   #send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
 const CHAT_ICON = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
   <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+</svg>`;
+
+const MESSAGE_CIRCLE_ICON = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+</svg>`;
+
+const SEND_ICON = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <line x1="22" y1="2" x2="11" y2="13"></line>
+  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
 </svg>`;
 
 export class ChatUI {
@@ -148,14 +236,18 @@ export class ChatUI {
   private isOpen = false;
   private currentStreamEl: HTMLElement | null = null;
   private onSend: ((text: string) => void) | null = null;
-  private brandColor: string;
-  private cityName: string;
+  private opts: ChatUIOptions;
 
-  constructor(host: HTMLElement, brandColor: string, cityName: string) {
-    this.brandColor = brandColor;
-    this.cityName = cityName;
+  constructor(host: HTMLElement, opts: ChatUIOptions) {
+    this.opts = opts;
+    // Set position attribute on host for CSS :host() selectors
+    const pos = opts.position || 'bottom-right';
+    host.setAttribute('data-pos', pos);
     this.shadow = host.attachShadow({ mode: 'open' });
     this._build();
+    if (opts.autoOpen) {
+      this._open();
+    }
   }
 
   setOnSend(handler: (text: string) => void): void {
@@ -208,19 +300,13 @@ export class ChatUI {
 
   showError(message: string): void {
     const el = this._msgEl('assistant');
-    el.textContent = `⚠️ ${message}`;
+    el.textContent = `\u26A0\uFE0F ${message}`;
     el.style.color = '#dc2626';
     this.messagesContainer.appendChild(el);
     this.currentStreamEl = null;
     this.sendBtn.disabled = false;
     this.input.disabled = false;
     this._scrollToBottom();
-  }
-
-  showGreeting(text: string): void {
-    const el = this._msgEl('assistant');
-    el.textContent = text;
-    this.messagesContainer.appendChild(el);
   }
 
   private _build(): void {
@@ -231,29 +317,54 @@ export class ChatUI {
     const launcher = document.createElement('button');
     launcher.id = 'launcher';
     launcher.innerHTML = CHAT_ICON;
-    launcher.setAttribute('aria-label', `Open ${this.cityName} chat assistant`);
-    launcher.style.setProperty('--ca-brand', this.brandColor);
+    launcher.setAttribute('aria-label', `Open ${this.opts.cityName} chat assistant`);
+    launcher.style.setProperty('--ca-brand', this.opts.brandColor);
     launcher.addEventListener('click', () => this._toggle());
 
     // Panel
     this.panel = document.createElement('div');
     this.panel.id = 'panel';
     this.panel.classList.add('hidden');
-    this.panel.style.setProperty('--ca-brand', this.brandColor);
+    this.panel.style.setProperty('--ca-brand', this.opts.brandColor);
 
-    // Header
+    // Header — matches settings preview layout
     const header = document.createElement('div');
     header.id = 'header';
+
+    const headerLeft = document.createElement('div');
+    headerLeft.id = 'header-left';
+
+    if (this.opts.logoUrl) {
+      const logo = document.createElement('img');
+      logo.id = 'header-logo';
+      logo.src = this.opts.logoUrl;
+      logo.alt = 'Logo';
+      headerLeft.appendChild(logo);
+    }
+
+    const headerText = document.createElement('div');
+    headerText.id = 'header-text';
     const title = document.createElement('span');
     title.id = 'header-title';
-    title.textContent = this.cityName;
+    title.textContent = this.opts.cityName;
+    const subtitle = document.createElement('span');
+    subtitle.id = 'header-subtitle';
+    subtitle.textContent = 'Ask about city services';
+    headerText.appendChild(title);
+    headerText.appendChild(subtitle);
+    headerLeft.appendChild(headerText);
+
+    const headerRight = document.createElement('div');
+    headerRight.id = 'header-right';
     const closeBtn = document.createElement('button');
     closeBtn.id = 'close-btn';
-    closeBtn.textContent = '✕';
+    closeBtn.textContent = '\u2715';
     closeBtn.setAttribute('aria-label', 'Close chat');
     closeBtn.addEventListener('click', () => this._close());
-    header.appendChild(title);
-    header.appendChild(closeBtn);
+    headerRight.appendChild(closeBtn);
+
+    header.appendChild(headerLeft);
+    header.appendChild(headerRight);
 
     // Messages
     this.messagesContainer = document.createElement('div');
@@ -261,13 +372,25 @@ export class ChatUI {
     this.messagesContainer.setAttribute('role', 'log');
     this.messagesContainer.setAttribute('aria-live', 'polite');
 
+    // Greeting area — centered with icon, matching settings preview
+    const greetingArea = document.createElement('div');
+    greetingArea.id = 'greeting-area';
+    const greetingIcon = document.createElement('span');
+    greetingIcon.innerHTML = MESSAGE_CIRCLE_ICON.replace('viewBox', 'id="greeting-icon" viewBox');
+    const greetingText = document.createElement('div');
+    greetingText.id = 'greeting-text';
+    greetingText.textContent = this.opts.greeting;
+    greetingArea.appendChild(greetingIcon);
+    greetingArea.appendChild(greetingText);
+    this.messagesContainer.appendChild(greetingArea);
+
     // Input row
     const inputRow = document.createElement('div');
     inputRow.id = 'input-row';
 
     this.input = document.createElement('textarea');
     this.input.id = 'input';
-    this.input.placeholder = 'Ask about city services…';
+    this.input.placeholder = 'Type your question...';
     this.input.rows = 1;
     this.input.setAttribute('aria-label', 'Chat message');
     this.input.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -279,7 +402,8 @@ export class ChatUI {
 
     this.sendBtn = document.createElement('button');
     this.sendBtn.id = 'send-btn';
-    this.sendBtn.textContent = 'Send';
+    this.sendBtn.innerHTML = SEND_ICON;
+    this.sendBtn.setAttribute('aria-label', 'Send message');
     this.sendBtn.addEventListener('click', () => this._submitInput());
 
     inputRow.appendChild(this.input);

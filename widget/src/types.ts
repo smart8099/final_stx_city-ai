@@ -15,6 +15,14 @@ export interface TenantConfig {
   brand_color?: string;
   /** Greeting shown on widget open. */
   greeting?: string;
+  /** Display name override (from widget settings). */
+  city_name?: string;
+  /** Logo image URL. */
+  logo_url?: string;
+  /** Auto-open the widget on page load. */
+  auto_open?: boolean;
+  /** Widget position: "bottom-right" | "bottom-left" | "top-right" | "top-left". */
+  position?: string;
 }
 
 /** A single message displayed in the chat UI. */
