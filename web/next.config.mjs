@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  devIndicators: false,
   serverExternalPackages: [
     "langchain",
     "@langchain/core",

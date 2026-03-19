@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-import { useOrganization } from "@clerk/nextjs";
+import { useOrganization, useAuth } from "@clerk/nextjs";
 import { trpc } from "@/lib/trpc";
 
 /**
@@ -13,6 +13,7 @@ export function useTenant() {
   const params = useParams();
   const slug = params.tenant_slug as string;
   const { organization } = useOrganization();
+  const { isSignedIn, isLoaded: authLoaded } = useAuth();
 
   const ensureTenant = trpc.tenants.getOrCreateBySlug.useMutation();
   const [tenant, setTenant] = useState<{
@@ -25,7 +26,8 @@ export function useTenant() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (slug && !tenant && !ensureTenant.isPending) {
+    // Wait until Clerk auth is loaded and user is signed in so the Bearer token is available
+    if (slug && authLoaded && isSignedIn && !tenant && !ensureTenant.isPending) {
       ensureTenant.mutate(
         { slug, orgName: organization?.name },
         {
@@ -34,7 +36,7 @@ export function useTenant() {
         },
       );
     }
-  }, [slug, organization?.name]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [slug, organization?.name, authLoaded, isSignedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     tenant,
