@@ -17,7 +17,15 @@ export function TRPCReactProvider({ children }: { children: React.ReactNode }) {
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
 
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: { retry: 2, retryDelay: 1000 },
+          mutations: { retry: 1, retryDelay: 1000 },
+        },
+      }),
+  );
   const [trpcClient] = useState(() =>
     trpc.createClient({
       links: [

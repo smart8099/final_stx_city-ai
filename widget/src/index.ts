@@ -31,7 +31,7 @@ import { CityAssistWidget } from './widget';
 
   const apiUrl =
     scriptTag.getAttribute('data-api-url') ?? 'https://api.cityassist.ai';
-  const wsUrl = scriptTag.getAttribute('data-ws-url') ?? '';
+  const wsUrl = scriptTag.getAttribute('data-ws-url') || undefined;
 
   const widget = new CityAssistWidget({ tenantSlug, apiUrl, wsUrl });
 
