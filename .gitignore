@@ -2,9 +2,9 @@
 # CityAssist monorepo .gitignore
 # =============================================================
 .claude/
-CLAUDE.md
+#CLAUDE.md
 */CLAUDE.md
-.mcp.json
+#.mcp.json
 generate_architecture_pdf.py
 
 # ── Secrets / environment ─────────────────────────────────────────────────────
