@@ -16,3 +16,4 @@ process.env.LLM_PROVIDER = "groq";
 process.env.LLM_MODEL = "llama-3.1-8b-instant";
 process.env.TAVILY_API_KEY = "test-tavily-key";
 process.env.GROQ_API_KEY = "test-groq-key";
+process.env.RESPONSE_CACHE_TTL_SECONDS = "3600";

@@ -33,7 +33,7 @@ import { CityAssistWidget } from './widget';
     scriptTag.getAttribute('data-api-url') ?? 'https://api.cityassist.ai';
   const wsUrl = scriptTag.getAttribute('data-ws-url') || undefined;
 
-  const widget = new CityAssistWidget({ tenantSlug, apiUrl, wsUrl });
+  const widget = new CityAssistWidget({ tenantSlug, apiUrl, ...(wsUrl ? { wsUrl } : {}) });
 
   const run = () => {
     void widget.init();

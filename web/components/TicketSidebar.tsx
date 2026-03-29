@@ -102,7 +102,11 @@ export default function TicketSidebar({ conversations, activeView, recentlyViewe
   };
 
   const getDeptCount = (deptName: string) => {
-    return conversations.filter((c) => c.department === deptName).length;
+    return conversations.filter(
+      (c) =>
+        c.department === deptName ||
+        c.routedDepartments?.some((rd) => rd.departmentName === deptName),
+    ).length;
   };
 
   const getQuickViewCount = (key: string) => {

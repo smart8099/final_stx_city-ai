@@ -7,6 +7,7 @@ import {
   internalNotes,
   departments,
   tenants,
+  conversationDepartments,
 } from "@/server/db/schema";
 
 // ── SLA elapsed-time helper ───────────────────────────────────────────────────
@@ -106,7 +107,7 @@ export const conversationsAdminRouter = router({
       // Fetch messages and notes for each conversation
       const result = await Promise.all(
         convs.map(async (conv) => {
-          const [msgs, notes, dept] = await Promise.all([
+          const [msgs, notes, dept, routedDepts] = await Promise.all([
             ctx.db
               .select()
               .from(messages)
@@ -125,6 +126,18 @@ export const conversationsAdminRouter = router({
                   .limit(1)
                   .then((r) => r[0] ?? null)
               : Promise.resolve(null),
+            ctx.db
+              .select({
+                departmentId: conversationDepartments.departmentId,
+                departmentName: departments.name,
+                reason: conversationDepartments.reason,
+                detectedAt: conversationDepartments.detectedAt,
+                triggerMessageId: conversationDepartments.triggerMessageId,
+              })
+              .from(conversationDepartments)
+              .innerJoin(departments, eq(conversationDepartments.departmentId, departments.id))
+              .where(eq(conversationDepartments.conversationId, conv.id))
+              .orderBy(conversationDepartments.detectedAt),
           ]);
           // Compute SLA status using tenant config
           const now = Date.now();
@@ -144,6 +157,13 @@ export const conversationsAdminRouter = router({
           return {
             ...conv,
             departmentName: dept?.name ?? null,
+            routedDepartments: routedDepts.map((rd) => ({
+              departmentId: rd.departmentId,
+              departmentName: rd.departmentName,
+              reason: rd.reason,
+              detectedAt: rd.detectedAt.toISOString(),
+              triggerMessageId: rd.triggerMessageId ?? null,
+            })),
             slaStatus,
             slaRemainingMs,
             messages: msgs.map((m) => ({
