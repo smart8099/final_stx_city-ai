@@ -17,11 +17,20 @@ export interface InternalNote {
   timestamp: string;
 }
 
+export interface RoutedDepartment {
+  departmentId: string;
+  departmentName: string;
+  reason: string | null;
+  detectedAt: string;
+  triggerMessageId: string | null;
+}
+
 export interface Conversation {
   id: string;
   sessionId: string;
   status: "new" | "open" | "resolved" | "escalated";
   department?: string;
+  routedDepartments?: RoutedDepartment[];
   intent?: string;
   priority?: "low" | "normal" | "high" | "urgent";
   assignedTo?: string;

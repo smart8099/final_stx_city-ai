@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   Box,
   VStack,
@@ -10,6 +12,7 @@ import {
   Icon,
   Alert,
   AlertIcon,
+  Link,
 } from "@chakra-ui/react";
 import { FiFile } from "react-icons/fi";
 import { Conversation, INTENT_LABELS } from "@/lib/types";
@@ -20,6 +23,20 @@ interface Props {
 }
 
 export default function ConversationThread({ conversation, hideHeader }: Props) {
+  /**
+   * Maps message ID → list of department names that were triggered by that message.
+   * Used to render routing badges below trigger messages in the thread.
+   */
+  const triggerMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const rd of conversation?.routedDepartments ?? []) {
+      if (rd.triggerMessageId) {
+        const existing = map.get(rd.triggerMessageId) ?? [];
+        map.set(rd.triggerMessageId, [...existing, rd.departmentName]);
+      }
+    }
+    return map;
+  }, [conversation?.routedDepartments]);
   if (!conversation) {
     return (
       <Flex flex={1} align="center" justify="center" color="gray.400">
@@ -95,7 +112,8 @@ export default function ConversationThread({ conversation, hideHeader }: Props) 
         {conversation.messages.map((msg) => (
           <Flex
             key={msg.id}
-            justify={msg.role === "user" ? "flex-end" : "flex-start"}
+            direction="column"
+            align={msg.role === "user" ? "flex-end" : "flex-start"}
           >
             <Box
               maxW="70%"
@@ -110,9 +128,25 @@ export default function ConversationThread({ conversation, hideHeader }: Props) 
               border={msg.role === "assistant" ? "1px solid" : "none"}
               borderColor="gray.200"
             >
-              <Text fontSize="sm" lineHeight="1.6">
-                {msg.content}
-              </Text>
+              <Box fontSize="sm" lineHeight="1.6">
+                <ReactMarkdown
+                  components={{
+                    a: ({ href, children }) => (
+                      <Link href={href} isExternal color="blue.500" fontWeight="600" textDecoration="underline">
+                        {children}
+                      </Link>
+                    ),
+                    strong: ({ children }) => (
+                      <Text as="strong" fontWeight="700">{children}</Text>
+                    ),
+                    p: ({ children }) => (
+                      <Text mb={1}>{children}</Text>
+                    ),
+                  }}
+                >
+                  {msg.content}
+                </ReactMarkdown>
+              </Box>
 
               {msg.role === "assistant" && (
                 <Box mt={2} pt={2} borderTop="1px solid" borderColor="gray.100">
@@ -157,6 +191,16 @@ export default function ConversationThread({ conversation, hideHeader }: Props) 
                 })}
               </Text>
             </Box>
+
+            {triggerMap.has(msg.id) && (
+              <HStack spacing={1} mt={1} flexWrap="wrap">
+                {triggerMap.get(msg.id)!.map((deptName) => (
+                  <Badge key={deptName} fontSize="9px" colorScheme="blue" variant="subtle">
+                    → {deptName}
+                  </Badge>
+                ))}
+              </HStack>
+            )}
           </Flex>
         ))}
       </VStack>

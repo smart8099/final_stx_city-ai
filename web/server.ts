@@ -20,7 +20,9 @@ import {
   getOrCreateConversation,
   logMessage,
   updateConversationStatus,
+  addRoutedDepartments,
 } from "./server/services/conversation_service";
+import { detectDepartments, detectEscalation } from "./server/agent/routing";
 import { env } from "./server/config";
 import { wsLog } from "./server/logger";
 
@@ -28,14 +30,14 @@ import { wsLog } from "./server/logger";
 
 const RESOLVED_PATTERNS = /\b(thank(?:s| you)|got it|that(?:'s| is) helpful|perfect|awesome|great(?:,| )thanks|appreciate it|problem solved|that works|all set|no more questions)\b/i;
 
-const ESCALATED_PATTERNS = /\b(contact(?:ing)? (?:the |your )?[\w\s]*?(?:department|office|city hall|support|staff)|call (?:us|them|the)|speak (?:to|with) (?:a |an )?(?:human|representative|agent|person|staff)|visit (?:the |our )?[\w\s]*?(?:office|city hall|department)|in[- ]person assistance|human (?:agent|assistance|help|support)|transfer(?:ring)? (?:you|this)|recommend(?:ing)? (?:you )?(?:contact|call|visit|reach out))\b/i;
-
+/**
+ * Returns true if the user's message looks like a resolution acknowledgement.
+ *
+ * @param userMessage - The user's latest message.
+ * @returns Whether the conversation appears resolved.
+ */
 function detectResolved(userMessage: string): boolean {
   return RESOLVED_PATTERNS.test(userMessage);
-}
-
-function detectEscalated(assistantAnswer: string): boolean {
-  return ESCALATED_PATTERNS.test(assistantAnswer);
 }
 
 const dev = env.APP_ENV !== "production";
@@ -112,14 +114,17 @@ async function handleWebSocket(ws: WebSocket) {
 
     try {
       const history = await memManager.load(sessionId);
+      const sessionIsNew = history.length === 0;
       const departments = await listDepartments(db, tenant.id, redis);
 
       await setCurrentTenant(tenant, async () => {
         let conv: Awaited<ReturnType<typeof getOrCreateConversation>> | null = null;
 
+        let userMsgRowId: string | null = null;
         if (env.PERSIST_CHAT_MESSAGES) {
-          conv = await getOrCreateConversation(db, tenant.id, sessionId);
-          await logMessage(db, conv.id, "user", userMessage);
+          conv = await getOrCreateConversation(db, tenant.id, sessionId, sessionIsNew);
+          const userMsgRow = await logMessage(db, conv.id, "user", userMessage);
+          userMsgRowId = userMsgRow.id;
 
           // Mark as open on first real message
           if (conv.status === "new") {
@@ -146,13 +151,27 @@ async function handleWebSocket(ws: WebSocket) {
         }
 
         if (env.PERSIST_CHAT_MESSAGES && conv) {
-          await logMessage(db, conv.id, "assistant", finalAnswer);
+          const assistantMsgRow = await logMessage(db, conv.id, "assistant", finalAnswer);
+          void assistantMsgRow; // consumed by routing block below
 
-          // Check if assistant suggested contacting a department → escalated
-          if (detectEscalated(finalAnswer)) {
-            await updateConversationStatus(db, conv.id, "escalated", true);
-            log.info("Conversation auto-marked as escalated");
-          }
+          // Routing + escalation — fire and forget, never blocks response
+          void (async () => {
+            try {
+              const [matches, escalation] = await Promise.all([
+                detectDepartments(tenant, departments, history, userMessage),
+                detectEscalation(tenant, userMessage, finalAnswer, history),
+              ]);
+              if (matches.length > 0 && userMsgRowId) {
+                await addRoutedDepartments(db, conv!.id, matches, userMsgRowId);
+              }
+              if (escalation.shouldEscalate) {
+                await updateConversationStatus(db, conv!.id, "escalated", true);
+                log.info({ reason: escalation.reason }, "Conversation auto-marked as escalated");
+              }
+            } catch (err) {
+              log.warn({ err }, "Post-response classification failed — skipping");
+            }
+          })();
         }
 
         await memManager.save(sessionId, history, userMessage, finalAnswer);

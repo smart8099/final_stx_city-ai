@@ -23,8 +23,9 @@ export const logger = pino(
 );
 
 // Named child loggers — filter by module field
-export const wsLog    = logger.child({ module: "ws" });
-export const agentLog = logger.child({ module: "agent" });
-export const httpLog  = logger.child({ module: "http" });
-export const memLog   = logger.child({ module: "memory" });
-export const llmLog   = logger.child({ module: "llm" });
+export const wsLog      = logger.child({ module: "ws" });
+export const agentLog   = logger.child({ module: "agent" });
+export const routingLog = logger.child({ module: "routing" });
+export const httpLog    = logger.child({ module: "http" });
+export const memLog     = logger.child({ module: "memory" });
+export const llmLog     = logger.child({ module: "llm" });
