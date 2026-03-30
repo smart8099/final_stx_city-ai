@@ -3,38 +3,56 @@
  *
  * Conversations group messages under a (tenantId, sessionId) pair.
  * Only used when PERSIST_CHAT_MESSAGES=true.
+ *
+ * Also provides multi-department routing persistence via the
+ * conversation_departments junction table.
  */
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import type { DB } from "@/server/db";
 import {
   conversations,
   messages,
+  departments,
+  conversationDepartments,
   type Conversation,
   type Message,
 } from "@/server/db/schema";
+import type { RoutingMatch } from "@/server/agent/routing";
 
 /**
  * Finds the conversation for a (tenantId, sessionId) pair, creating it if needed.
  *
+ * When `startNew` is true the lookup is skipped and a new row is always inserted.
+ * This is used when Redis session history is empty (new visit or post-TTL expiry),
+ * ensuring each inactivity window produces a fresh conversation row.
+ *
+ * When `startNew` is false (default) the most-recent existing row is returned so
+ * that a session_id with multiple historical rows always resolves to the latest one.
+ *
  * @param db - Drizzle database client.
  * @param tenantId - Tenant UUID.
  * @param sessionId - Browser session ID.
- * @returns The existing or newly created conversation row.
+ * @param startNew - If true, always INSERT a new row instead of finding an existing one.
+ * @returns The existing (most-recent) or newly created conversation row.
  */
 export async function getOrCreateConversation(
   db: DB,
   tenantId: string,
   sessionId: string,
+  startNew = false,
 ): Promise<Conversation> {
-  const existing = await db
-    .select()
-    .from(conversations)
-    .where(
-      and(eq(conversations.tenantId, tenantId), eq(conversations.sessionId, sessionId)),
-    )
-    .limit(1);
+  if (!startNew) {
+    const existing = await db
+      .select()
+      .from(conversations)
+      .where(
+        and(eq(conversations.tenantId, tenantId), eq(conversations.sessionId, sessionId)),
+      )
+      .orderBy(desc(conversations.createdAt))
+      .limit(1);
 
-  if (existing[0]) return existing[0];
+    if (existing[0]) return existing[0];
+  }
 
   const [created] = await db
     .insert(conversations)
@@ -102,4 +120,85 @@ export async function logMessage(
   }
 
   return msg!;
+}
+
+/**
+ * Inserts routing matches into the conversation_departments junction table.
+ *
+ * Uses ON CONFLICT DO NOTHING so duplicate department detections are silently
+ * ignored — the unique constraint (conversationId, departmentId) is the guard.
+ *
+ * Also sets conversations.departmentId to the first match when it is currently
+ * NULL, providing backward compatibility for queries that rely on the single FK.
+ * The update uses WHERE department_id IS NULL to be race-safe.
+ *
+ * @param db - Drizzle database client.
+ * @param conversationId - UUID of the conversation.
+ * @param matches - Routing matches from detectDepartments().
+ * @param triggerMessageId - UUID of the assistant message that triggered routing.
+ */
+export async function addRoutedDepartments(
+  db: DB,
+  conversationId: string,
+  matches: RoutingMatch[],
+  triggerMessageId?: string,
+): Promise<void> {
+  if (matches.length === 0) return;
+
+  // Bulk insert — ignore conflicts so duplicates are silently dropped
+  await db
+    .insert(conversationDepartments)
+    .values(
+      matches.map((m) => ({
+        conversationId,
+        departmentId: m.id,
+        reason: m.reason,
+        triggerMessageId: triggerMessageId ?? null,
+      })),
+    )
+    .onConflictDoNothing();
+
+  // Backward compat: set the single-FK column to the first match if still NULL
+  await db
+    .update(conversations)
+    .set({ departmentId: matches[0]!.id })
+    .where(
+      and(
+        eq(conversations.id, conversationId),
+        sql`${conversations.departmentId} IS NULL`,
+      ),
+    );
+}
+
+/**
+ * Returns all departments routed to a conversation, ordered by detection time.
+ *
+ * @param db - Drizzle database client.
+ * @param conversationId - UUID of the conversation.
+ * @returns Array of routed department records with department name.
+ */
+export async function getRoutedDepartments(
+  db: DB,
+  conversationId: string,
+): Promise<
+  {
+    departmentId: string;
+    departmentName: string;
+    reason: string | null;
+    detectedAt: Date;
+  }[]
+> {
+  const rows = await db
+    .select({
+      departmentId: conversationDepartments.departmentId,
+      departmentName: departments.name,
+      reason: conversationDepartments.reason,
+      detectedAt: conversationDepartments.detectedAt,
+    })
+    .from(conversationDepartments)
+    .innerJoin(departments, eq(conversationDepartments.departmentId, departments.id))
+    .where(eq(conversationDepartments.conversationId, conversationId))
+    .orderBy(conversationDepartments.detectedAt);
+
+  return rows;
 }

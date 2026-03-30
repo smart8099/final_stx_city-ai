@@ -81,6 +81,13 @@ export default function ConversationsPage() {
       sessionId: c.sessionId,
       status: c.status as Conversation["status"],
       department: c.departmentName ?? undefined,
+      routedDepartments: c.routedDepartments?.map((rd) => ({
+        departmentId: rd.departmentId,
+        departmentName: rd.departmentName,
+        reason: rd.reason,
+        detectedAt: rd.detectedAt,
+        triggerMessageId: rd.triggerMessageId ?? null,
+      })),
       intent: c.intent ?? undefined,
       priority: (c.priority ?? "normal") as Conversation["priority"],
       assignedTo: c.assignedTo ?? undefined,
@@ -142,7 +149,11 @@ export default function ConversationsPage() {
     }
     if (activeView.startsWith("dept:")) {
       const deptName = activeView.slice(5);
-      return sorted.filter((c) => c.department === deptName);
+      return sorted.filter(
+        (c) =>
+          c.department === deptName ||
+          c.routedDepartments?.some((rd) => rd.departmentName === deptName),
+      );
     }
     return sorted;
   }, [conversations, activeView, myName, recentlyViewedIds]);

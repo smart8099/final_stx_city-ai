@@ -3,13 +3,14 @@
  *
  * LangGraph 1.x execution order (_runAgent):
  * 1. Quota check
- * 2. Response cache check
- * 3. Load session history (BaseMessage[]) from Redis
- * 4. Invoke agent (history prepended as messages array)
- * 5. Extract answer + sources
- * 6. Cache response
- * 7. Persist messages (optional)
- * 8. Save updated history to Redis
+ * 2. Load session history (BaseMessage[]) from Redis — determines sessionIsNew
+ * 3. Response cache check (uses sessionIsNew for conversation scoping)
+ * 4. Load departments
+ * 5. Invoke agent (history prepended as messages array)
+ * 6. Extract answer + sources
+ * 7. Cache response
+ * 8. Persist messages (optional, uses sessionIsNew for conversation scoping)
+ * 9. Save updated history to Redis
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
@@ -23,7 +24,10 @@ import { checkAndIncrementQuota } from "@/server/services/quota_service";
 import {
   getOrCreateConversation,
   logMessage,
+  addRoutedDepartments,
+  updateConversationStatus,
 } from "@/server/services/conversation_service";
+import { detectDepartments, detectEscalation } from "@/server/agent/routing";
 import { invokeWithBackoff, rateLimitState } from "@/server/llm/groq_rate_limiter";
 import { env } from "@/server/config";
 import { httpLog } from "@/server/logger";
@@ -114,24 +118,27 @@ export async function runAgent(
     });
   }
 
-  // 2. Cache check
+  // 2. Load session history — needed before cache path so sessionIsNew is available
+  const memManager = new SessionMemoryManager(redis);
+  const history = await memManager.load(sessionId);
+  const sessionIsNew = history.length === 0;
+
+  // 3. Cache check
   const cached = await getCachedResponse(redis, tenant.id, message);
   if (cached) {
     log.info({ durationMs: Date.now() - t0, cacheHit: true }, "chat.send responded from cache");
     if (env.PERSIST_CHAT_MESSAGES) {
-      const conv = await getOrCreateConversation(db, tenant.id, sessionId);
+      const conv = await getOrCreateConversation(db, tenant.id, sessionId, sessionIsNew);
       await logMessage(db, conv.id, "user", message);
       await logMessage(db, conv.id, "assistant", cached.answer);
     }
     return cached;
   }
 
-  // 3. Load session history + departments
-  const memManager = new SessionMemoryManager(redis);
-  const history = await memManager.load(sessionId);
+  // 4. Load departments
   const departments = await listDepartments(db, tenant.id, redis);
 
-  // 4–5. Invoke agent inside tenant context
+  // 5–6. Invoke agent inside tenant context
   let answer = "";
   let sources: SourceItem[] = [];
 
@@ -161,17 +168,36 @@ export async function runAgent(
     sources = r.sources;
   });
 
-  // 6. Cache response
+  // 7. Cache response
   await setCachedResponse(redis, tenant.id, message, answer, sources);
 
-  // 7. Persist messages (optional)
+  // 8. Persist messages (optional)
   if (env.PERSIST_CHAT_MESSAGES) {
-    const conv = await getOrCreateConversation(db, tenant.id, sessionId);
-    await logMessage(db, conv.id, "user", message);
+    const conv = await getOrCreateConversation(db, tenant.id, sessionId, sessionIsNew);
+    const userMsgRow = await logMessage(db, conv.id, "user", message);
     await logMessage(db, conv.id, "assistant", answer);
+
+    // Routing + escalation — fire and forget, never blocks response
+    void (async () => {
+      try {
+        const [matches, escalation] = await Promise.all([
+          detectDepartments(tenant, departments, history, message),
+          detectEscalation(tenant, message, answer, history),
+        ]);
+        if (matches.length > 0) {
+          await addRoutedDepartments(db, conv.id, matches, userMsgRow.id);
+        }
+        if (escalation.shouldEscalate) {
+          await updateConversationStatus(db, conv.id, "escalated", true);
+          log.info({ reason: escalation.reason }, "Conversation auto-marked as escalated");
+        }
+      } catch (err) {
+        log.warn({ err }, "Post-response classification failed — skipping");
+      }
+    })();
   }
 
-  // 8. Save updated history to Redis
+  // 9. Save updated history to Redis
   await memManager.save(sessionId, history, message, answer);
 
   log.info(

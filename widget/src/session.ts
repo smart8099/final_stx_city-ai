@@ -5,28 +5,32 @@
  * page reloads.  Falls back to an in-memory ID when localStorage is
  * unavailable (private browsing, sandboxed iframes).
  */
-const SESSION_KEY = 'cityassist_session_id';
+// const SESSION_KEY = 'cityassist_session_id';
 
 /**
  * Returns the persisted session ID for this browser, or generates and stores
  * a new UUID v4 if none exists.
  */
 export function getOrCreateSessionId(): string {
-  try {
-    const existing = localStorage.getItem(SESSION_KEY);
-    if (existing) return existing;
-  } catch {
-    // localStorage unavailable (private browsing / iframe sandbox)
-    return _generateId();
-  }
+  // DEV: localStorage persistence disabled — every page load gets a fresh session.
+  // TODO: re-enable before production by uncommenting the block below.
+  return _generateId();
 
-  const id = _generateId();
-  try {
-    localStorage.setItem(SESSION_KEY, id);
-  } catch {
-    // Ignore write failures.
-  }
-  return id;
+  // try {
+  //   const existing = localStorage.getItem(SESSION_KEY);
+  //   if (existing) return existing;
+  // } catch {
+  //   // localStorage unavailable (private browsing / iframe sandbox)
+  //   return _generateId();
+  // }
+  //
+  // const id = _generateId();
+  // try {
+  //   localStorage.setItem(SESSION_KEY, id);
+  // } catch {
+  //   // Ignore write failures.
+  // }
+  // return id;
 }
 
 /**
