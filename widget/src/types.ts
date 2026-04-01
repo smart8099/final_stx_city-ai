@@ -44,6 +44,19 @@ export interface Source {
 export type WSMessage =
   | { type: 'token'; token: string }
   | { type: 'done'; sources: Source[] }
-  | { type: 'escalate'; department: { name: string; phone: string | null; email: string | null } }
+  | { type: 'resolution_check' }
+  | { type: 'more_questions_check' }
+  | { type: 'system_message'; content: string }
+  | { type: 'escalation_offer'; department: { name: string; phone: string } | null }
+  | { type: 'contact_form' }
+  | { type: 'session_closed'; reason: 'auto-resolved' | 'escalated' | 'user-resolved' }
   | { type: 'error'; message: string }
   | { type: 'auth_ok' };
+
+/** WebSocket frames sent by the widget to the server. */
+export type WSClientMessage =
+  | { type: 'message'; content: string }
+  | { type: 'resolution_response'; resolved: boolean }
+  | { type: 'more_questions_response'; hasMore: boolean }
+  | { type: 'escalation_accept' }
+  | { type: 'contact_submit'; name: string; phone: string; email?: string };

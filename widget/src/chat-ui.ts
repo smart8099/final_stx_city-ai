@@ -178,6 +178,71 @@ const STYLES = `
   .msg.assistant a { color: var(--ca-brand, #1a56db); text-decoration: underline; font-weight: 600; }
   .msg.assistant strong { font-weight: 700; }
 
+  .action-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .action-btn {
+    padding: 5px 14px;
+    border-radius: 20px;
+    border: none;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+  }
+  .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .action-btn.primary { background: var(--ca-brand, #1a56db); color: #fff; }
+  .action-btn.secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+
+  .contact-form { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .contact-input {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-family: inherit;
+    color: #374151;
+    background: #f9fafb;
+    outline: none;
+  }
+  .contact-input:focus { border-color: var(--ca-brand, #1a56db); }
+
+  .system-msg {
+    align-self: center;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #166534;
+    font-size: 12px;
+    border-radius: 12px;
+    padding: 7px 14px;
+    max-width: 88%;
+    text-align: center;
+  }
+
+  .session-ended {
+    align-self: center;
+    font-size: 11px;
+    color: #9ca3af;
+    margin: 6px 0;
+    text-align: center;
+  }
+  .new-convo-btn {
+    align-self: center;
+    margin-top: 4px;
+    padding: 6px 16px;
+    border-radius: 20px;
+    border: 1px solid var(--ca-brand, #1a56db);
+    background: transparent;
+    color: var(--ca-brand, #1a56db);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .new-convo-btn:hover { background: var(--ca-brand, #1a56db); color: #fff; }
+
   #input-row {
     display: flex;
     gap: 8px;
@@ -305,6 +370,7 @@ export class ChatUI {
   private currentStreamEl: HTMLElement | null = null;
   private currentStreamText = '';
   private onSend: ((text: string) => void) | null = null;
+  private onNewConversation: (() => void) | null = null;
   private opts: ChatUIOptions;
 
   constructor(host: HTMLElement, opts: ChatUIOptions) {
@@ -321,6 +387,16 @@ export class ChatUI {
 
   setOnSend(handler: (text: string) => void): void {
     this.onSend = handler;
+  }
+
+  /**
+   * Registers a callback invoked when the user clicks "Start a new conversation"
+   * after a session has been closed.
+   *
+   * @param handler - Callback with no arguments.
+   */
+  setOnNewConversation(handler: () => void): void {
+    this.onNewConversation = handler;
   }
 
   appendUserMessage(text: string): void {
@@ -390,6 +466,219 @@ export class ChatUI {
     this.input.focus();
   }
 
+  /**
+   * Appends a resolution check prompt with Yes / No buttons.
+   *
+   * @param onResponse - Called with `true` when Yes is clicked, `false` for No.
+   */
+  showResolutionCheck(onResponse: (resolved: boolean) => void): void {
+    const bubble = this._msgEl('assistant');
+
+    const text = document.createElement('span');
+    text.textContent = 'Was your question resolved?';
+    bubble.appendChild(text);
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'action-buttons';
+
+    const yesBtn = document.createElement('button');
+    yesBtn.className = 'action-btn primary';
+    yesBtn.textContent = '✓ Yes';
+
+    const noBtn = document.createElement('button');
+    noBtn.className = 'action-btn secondary';
+    noBtn.textContent = '✗ No';
+
+    const disable = () => { yesBtn.disabled = true; noBtn.disabled = true; };
+
+    yesBtn.addEventListener('click', () => { disable(); onResponse(true); });
+    noBtn.addEventListener('click', () => { disable(); onResponse(false); });
+
+    btnRow.appendChild(yesBtn);
+    btnRow.appendChild(noBtn);
+    bubble.appendChild(btnRow);
+
+    this.messagesContainer.appendChild(bubble);
+    this._scrollToBottom();
+  }
+
+  /**
+   * Appends an escalation offer with Yes / No buttons.
+   *
+   * @param department - Department info to mention, or null for a generic message.
+   * @param onAccept - Called when the user clicks Yes.
+   */
+  showEscalationOffer(
+    department: { name: string; phone: string } | null,
+    onAccept: () => void,
+  ): void {
+    const bubble = this._msgEl('assistant');
+
+    const deptName = department?.name ?? 'the relevant city department';
+    const text = document.createElement('span');
+    text.textContent =
+      `It looks like your question may need more help. Would you like ${deptName} to reach out to you directly?`;
+    bubble.appendChild(text);
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'action-buttons';
+
+    const yesBtn = document.createElement('button');
+    yesBtn.className = 'action-btn primary';
+    yesBtn.textContent = 'Yes, contact me';
+
+    const noBtn = document.createElement('button');
+    noBtn.className = 'action-btn secondary';
+    noBtn.textContent = 'No, thanks';
+
+    const disable = () => { yesBtn.disabled = true; noBtn.disabled = true; };
+
+    yesBtn.addEventListener('click', () => { disable(); onAccept(); });
+    noBtn.addEventListener('click', () => { disable(); });
+
+    btnRow.appendChild(yesBtn);
+    btnRow.appendChild(noBtn);
+    bubble.appendChild(btnRow);
+
+    this.messagesContainer.appendChild(bubble);
+    this._scrollToBottom();
+  }
+
+  /**
+   * Appends an inline contact form (name + phone required, email optional).
+   *
+   * @param onSubmit - Called with name, phone, and optional email on submission.
+   */
+  showContactForm(onSubmit: (name: string, phone: string, email?: string) => void): void {
+    const bubble = this._msgEl('assistant');
+
+    const text = document.createElement('span');
+    text.textContent = 'Please provide your contact details and a representative will reach out within 24 hours.';
+    bubble.appendChild(text);
+
+    const form = document.createElement('div');
+    form.className = 'contact-form';
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'contact-input';
+    nameInput.placeholder = 'Your name *';
+
+    const phoneInput = document.createElement('input');
+    phoneInput.type = 'tel';
+    phoneInput.className = 'contact-input';
+    phoneInput.placeholder = 'Phone number *';
+
+    const emailInput = document.createElement('input');
+    emailInput.type = 'email';
+    emailInput.className = 'contact-input';
+    emailInput.placeholder = 'Email address (optional)';
+
+    const submitBtn = document.createElement('button');
+    submitBtn.className = 'action-btn primary';
+    submitBtn.textContent = 'Submit';
+
+    submitBtn.addEventListener('click', () => {
+      const name = nameInput.value.trim();
+      const phone = phoneInput.value.trim();
+      const email = emailInput.value.trim() || undefined;
+      if (!name || !phone) return;
+      submitBtn.disabled = true;
+      nameInput.disabled = true;
+      phoneInput.disabled = true;
+      emailInput.disabled = true;
+      onSubmit(name, phone, email);
+    });
+
+    form.appendChild(nameInput);
+    form.appendChild(phoneInput);
+    form.appendChild(emailInput);
+    form.appendChild(submitBtn);
+    bubble.appendChild(form);
+
+    this.messagesContainer.appendChild(bubble);
+    this._scrollToBottom();
+  }
+
+  /**
+   * Renders a green informational system message (not a chat bubble).
+   * Used for acknowledgments like "Thanks for your feedback!".
+   *
+   * @param content - The message text to display.
+   */
+  showSystemMessage(content: string): void {
+    const el = document.createElement('div');
+    el.className = 'system-msg';
+    el.textContent = content;
+    this.messagesContainer.appendChild(el);
+    this._scrollToBottom();
+  }
+
+  /**
+   * Appends a "Do you have any more questions?" prompt with Yes / No buttons.
+   *
+   * @param onResponse - Called with `true` if user wants to continue, `false` to end.
+   */
+  showMoreQuestionsCheck(onResponse: (hasMore: boolean) => void): void {
+    const bubble = this._msgEl('assistant');
+
+    const text = document.createElement('span');
+    text.textContent = 'Do you have any more questions?';
+    bubble.appendChild(text);
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'action-buttons';
+
+    const yesBtn = document.createElement('button');
+    yesBtn.className = 'action-btn primary';
+    yesBtn.textContent = 'Yes';
+
+    const noBtn = document.createElement('button');
+    noBtn.className = 'action-btn secondary';
+    noBtn.textContent = 'No';
+
+    const disable = () => { yesBtn.disabled = true; noBtn.disabled = true; };
+
+    yesBtn.addEventListener('click', () => { disable(); onResponse(true); });
+    noBtn.addEventListener('click', () => { disable(); onResponse(false); });
+
+    btnRow.appendChild(yesBtn);
+    btnRow.appendChild(noBtn);
+    bubble.appendChild(btnRow);
+
+    this.messagesContainer.appendChild(bubble);
+    this._scrollToBottom();
+  }
+
+  /**
+   * Closes the session: disables input, shows a closing message, and offers
+   * a "Start a new conversation" button.
+   *
+   * @param reason - Why the session ended (affects the displayed message).
+   */
+  closeSession(reason: 'auto-resolved' | 'escalated' | 'user-resolved'): void {
+    this.input.disabled = true;
+    this.sendBtn.disabled = true;
+
+    const endedMsg = document.createElement('div');
+    endedMsg.className = 'session-ended';
+    endedMsg.textContent =
+      reason === 'escalated'
+        ? 'Your request has been submitted — the city will reach out within 24 hours.'
+        : 'This session has ended.';
+    this.messagesContainer.appendChild(endedMsg);
+
+    const newBtn = document.createElement('button');
+    newBtn.className = 'new-convo-btn';
+    newBtn.textContent = 'Start a new conversation';
+    newBtn.addEventListener('click', () => {
+      this.onNewConversation?.();
+    });
+    this.messagesContainer.appendChild(newBtn);
+
+    this._scrollToBottom();
+  }
+
   showError(message: string): void {
     const el = this._msgEl('assistant');
     el.textContent = `\u26A0\uFE0F ${message}`;
@@ -399,6 +688,37 @@ export class ChatUI {
     this.sendBtn.disabled = false;
     this.input.disabled = false;
     this._scrollToBottom();
+  }
+
+  /**
+   * Resets the chat UI to a clean state for a new conversation.
+   *
+   * Clears all messages (preserving the greeting area), re-enables input,
+   * and resets streaming state. Used when the user starts a new conversation
+   * after a session has been closed.
+   */
+  reset(): void {
+    // Remove all children and re-add the greeting area
+    while (this.messagesContainer.firstChild) {
+      this.messagesContainer.removeChild(this.messagesContainer.firstChild);
+    }
+    const greetingArea = document.createElement('div');
+    greetingArea.id = 'greeting-area';
+    const greetingIcon = document.createElement('span');
+    greetingIcon.innerHTML = MESSAGE_CIRCLE_ICON.replace('viewBox', 'id="greeting-icon" viewBox');
+    const greetingText = document.createElement('div');
+    greetingText.id = 'greeting-text';
+    greetingText.textContent = this.opts.greeting;
+    greetingArea.appendChild(greetingIcon);
+    greetingArea.appendChild(greetingText);
+    this.messagesContainer.appendChild(greetingArea);
+
+    this.currentStreamEl = null;
+    this.currentStreamText = '';
+    this.input.disabled = false;
+    this.sendBtn.disabled = false;
+    this.input.value = '';
+    this.input.focus();
   }
 
   private _build(): void {

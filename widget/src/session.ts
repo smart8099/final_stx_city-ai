@@ -8,6 +8,16 @@
 // const SESSION_KEY = 'cityassist_session_id';
 
 /**
+ * Generates and returns a brand-new session ID without consulting localStorage.
+ * Used when the user explicitly starts a new conversation after session close.
+ *
+ * @returns A fresh UUID v4 string.
+ */
+export function createNewSessionId(): string {
+  return _generateId();
+}
+
+/**
  * Returns the persisted session ID for this browser, or generates and stores
  * a new UUID v4 if none exists.
  */

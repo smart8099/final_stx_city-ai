@@ -21,6 +21,7 @@ import {
   logMessage,
   updateConversationStatus,
   addRoutedDepartments,
+  storeEscalationContact,
 } from "./server/services/conversation_service";
 import { detectDepartments, detectEscalation } from "./server/agent/routing";
 import { env } from "./server/config";
@@ -40,6 +41,19 @@ function detectResolved(userMessage: string): boolean {
   return RESOLVED_PATTERNS.test(userMessage);
 }
 
+const AGENT_FAREWELL_PATTERNS = /\b(have a (great|good|wonderful|nice) day|feel free to (reach out|contact|ask)|goodbye|take care|have a good one|it was (a )?pleasure|hope (that|this) (helps?|answered)|is there anything else I can (help|assist)|don't hesitate to (reach out|ask|contact))\b/i;
+
+/**
+ * Returns true if the agent's response looks like a closing farewell,
+ * indicating the conversation is naturally over.
+ *
+ * @param answer - The agent's final response text.
+ * @returns Whether the agent appears to have said goodbye.
+ */
+function detectAgentFarewell(answer: string): boolean {
+  return AGENT_FAREWELL_PATTERNS.test(answer);
+}
+
 const dev = env.APP_ENV !== "production";
 const app = next({ dev });
 const handle = app.getRequestHandler();
@@ -49,9 +63,75 @@ interface WSFrame {
   [key: string]: unknown;
 }
 
+/** Fixed interval used for all inactivity stages (ms). */
+const TIMER_MS = 120_000;
+
 async function handleWebSocket(ws: WebSocket) {
   const redis = getRedis();
   const memManager = new SessionMemoryManager(redis);
+
+  // Per-connection timer state
+  let resolutionCheckTimer: NodeJS.Timeout | null = null;
+  let resolutionTimeoutTimer: NodeJS.Timeout | null = null; // auto-close if check goes unanswered
+  let followUpTimer: NodeJS.Timeout | null = null;
+  let userInputTimer: NodeJS.Timeout | null = null;
+  let clarificationTimer: NodeJS.Timeout | null = null; // fires escalation offer if user doesn't clarify
+  let currentConvId: string | null = null;
+  // Set after user confirms resolution — suppresses further resolution_check prompts
+  let resolutionConfirmed = false;
+  // When true, ws.on("close") will mark the conversation auto-resolved
+  let shouldAutoResolve = false;
+
+  /**
+   * Clears all active inactivity timers.
+   */
+  function clearTimers(): void {
+    if (resolutionCheckTimer) { clearTimeout(resolutionCheckTimer); resolutionCheckTimer = null; }
+    if (resolutionTimeoutTimer) { clearTimeout(resolutionTimeoutTimer); resolutionTimeoutTimer = null; }
+    if (followUpTimer) { clearTimeout(followUpTimer); followUpTimer = null; }
+    if (userInputTimer) { clearTimeout(userInputTimer); userInputTimer = null; }
+    if (clarificationTimer) { clearTimeout(clarificationTimer); clarificationTimer = null; }
+  }
+
+  /**
+   * Closes the session cleanly: sends session_closed frame, flags for
+   * auto-resolve, then closes the WebSocket.
+   */
+  function closeAutoResolved(): void {
+    clearTimers();
+    shouldAutoResolve = true;
+    ws.send(JSON.stringify({ type: "session_closed", reason: "auto-resolved" }));
+    ws.close(1000, "Auto-resolved");
+  }
+
+  /**
+   * Starts inactivity timer after a completed agent response.
+   *
+   * - Before resolution confirmed: waits TIMER_MS then sends resolution_check.
+   *   A second TIMER_MS timeout auto-closes if the check is never answered.
+   * - After resolution confirmed: waits TIMER_MS then sends more_questions_check
+   *   (no second resolution_check is ever shown again).
+   */
+  function startResolutionTimer(): void {
+    clearTimers();
+    if (!resolutionConfirmed) {
+      resolutionCheckTimer = setTimeout(() => {
+        resolutionCheckTimer = null;
+        ws.send(JSON.stringify({ type: "resolution_check" }));
+        // Auto-close if the resolution check is never answered
+        resolutionTimeoutTimer = setTimeout(() => {
+          resolutionTimeoutTimer = null;
+          closeAutoResolved();
+        }, TIMER_MS);
+      }, TIMER_MS);
+    } else {
+      // Already confirmed — skip resolution_check, go straight to follow-up
+      followUpTimer = setTimeout(() => {
+        followUpTimer = null;
+        ws.send(JSON.stringify({ type: "more_questions_check" }));
+      }, TIMER_MS);
+    }
+  }
 
   wsLog.info("Client connected");
 
@@ -94,7 +174,11 @@ async function handleWebSocket(ws: WebSocket) {
   ws.send(JSON.stringify({ type: "auth_ok" }));
 
   ws.on("close", (code, reason) => {
+    clearTimers();
     log.info({ code, reason: reason.toString() }, "Client disconnected");
+    if (shouldAutoResolve && currentConvId && env.PERSIST_CHAT_MESSAGES) {
+      void updateConversationStatus(db, currentConvId, "auto-resolved");
+    }
   });
 
   ws.on("message", async (data) => {
@@ -105,9 +189,92 @@ async function handleWebSocket(ws: WebSocket) {
       return;
     }
 
+    // ── Resolution check response ─────────────────────────────────────────────
+    if (frame.type === "resolution_response") {
+      clearTimers();
+      if ((frame.resolved as boolean) === true) {
+        resolutionConfirmed = true;
+        // Acknowledge and give the user a chance to ask more questions
+        ws.send(JSON.stringify({
+          type: "system_message",
+          content: "Great! Thanks for your feedback. Feel free to ask if anything else comes to mind.",
+        }));
+        // After 120 s of silence, ask if they have more questions
+        followUpTimer = setTimeout(() => {
+          followUpTimer = null;
+          ws.send(JSON.stringify({ type: "more_questions_check" }));
+        }, TIMER_MS);
+      } else {
+        // resolved: false → prompt user to clarify; if no response in 45 s, offer escalation
+        ws.send(JSON.stringify({
+          type: "system_message",
+          content: "I'm sorry I wasn't able to fully resolve that. Could you share more details so I can try again?",
+        }));
+        clarificationTimer = setTimeout(() => {
+          clarificationTimer = null;
+          ws.send(JSON.stringify({ type: "escalation_offer", department: null }));
+        }, 45_000);
+      }
+      return;
+    }
+
+    // ── More-questions check response ─────────────────────────────────────────
+    if (frame.type === "more_questions_response") {
+      clearTimers();
+      if ((frame.hasMore as boolean) === true) {
+        // User has more questions — give them 120 s to type; close if silent
+        userInputTimer = setTimeout(() => {
+          userInputTimer = null;
+          closeAutoResolved();
+        }, TIMER_MS);
+      } else {
+        // No more questions — thank and close
+        ws.send(JSON.stringify({
+          type: "system_message",
+          content: "Thank you for using CityAssist! Have a great day.",
+        }));
+        closeAutoResolved();
+      }
+      return;
+    }
+
+    // ── Escalation: user accepted department callback offer ───────────────────
+    if (frame.type === "escalation_accept") {
+      ws.send(JSON.stringify({ type: "contact_form" }));
+      return;
+    }
+
+    // ── Escalation: user submitted contact details ────────────────────────────
+    if (frame.type === "contact_submit") {
+      clearTimers();
+      const name = ((frame.name as string) ?? "").trim();
+      const phone = ((frame.phone as string) ?? "").trim();
+      const emailRaw = ((frame.email as string) ?? "").trim();
+      const contact = { name, phone, ...(emailRaw ? { email: emailRaw } : {}) };
+      if (currentConvId && env.PERSIST_CHAT_MESSAGES) {
+        try {
+          await storeEscalationContact(db, currentConvId, contact);
+          await updateConversationStatus(db, currentConvId, "escalated", true);
+        } catch { /* ignore */ }
+      }
+      const confirmMsg = "Your request has been submitted. A representative from the city will reach out to you within 24 hours.";
+      // Log the confirmation to DB
+      if (currentConvId && env.PERSIST_CHAT_MESSAGES) {
+        try {
+          await logMessage(db, currentConvId, "assistant", confirmMsg);
+        } catch { /* ignore */ }
+      }
+      // Show confirmation in widget — session stays open so user can continue
+      ws.send(JSON.stringify({ type: "system_message", content: confirmMsg }));
+      return;
+    }
+
     if (frame.type !== "message") return;
     const userMessage = ((frame.content as string) ?? "").trim();
     if (!userMessage) return;
+
+    // Any new user message resets all inactivity timers
+    clearTimers();
 
     log.info({ userMessage }, "User message received");
     const t0 = Date.now();
@@ -123,6 +290,7 @@ async function handleWebSocket(ws: WebSocket) {
         let userMsgRowId: string | null = null;
         if (env.PERSIST_CHAT_MESSAGES) {
           conv = await getOrCreateConversation(db, tenant.id, sessionId, sessionIsNew);
+          currentConvId = conv.id;
           const userMsgRow = await logMessage(db, conv.id, "user", userMessage);
           userMsgRowId = userMsgRow.id;
 
@@ -151,8 +319,8 @@ async function handleWebSocket(ws: WebSocket) {
         }
 
         if (env.PERSIST_CHAT_MESSAGES && conv) {
-          const assistantMsgRow = await logMessage(db, conv.id, "assistant", finalAnswer);
-          void assistantMsgRow; // consumed by routing block below
+          const assistantMsgRow = await logMessage(db, conv.id, "assistant", finalAnswer, finalSources.length > 0 ? finalSources : undefined);
+          void assistantMsgRow;
 
           // Routing + escalation — fire and forget, never blocks response
           void (async () => {
@@ -165,8 +333,16 @@ async function handleWebSocket(ws: WebSocket) {
                 await addRoutedDepartments(db, conv!.id, matches, userMsgRowId);
               }
               if (escalation.shouldEscalate) {
-                await updateConversationStatus(db, conv!.id, "escalated", true);
-                log.info({ reason: escalation.reason }, "Conversation auto-marked as escalated");
+                // Send escalation offer to widget — let the user decide
+                const firstMatch = matches[0];
+                const deptInfo = firstMatch
+                  ? departments.find((d) => d.id === firstMatch.id)
+                  : null;
+                const deptPayload = deptInfo
+                  ? { name: deptInfo.name, phone: deptInfo.phone ?? "" }
+                  : null;
+                ws.send(JSON.stringify({ type: "escalation_offer", department: deptPayload }));
+                log.info({ reason: escalation.reason }, "Escalation offer sent to client");
               }
             } catch (err) {
               log.warn({ err }, "Post-response classification failed — skipping");
@@ -182,6 +358,17 @@ async function handleWebSocket(ws: WebSocket) {
         );
 
         ws.send(JSON.stringify({ type: "done", sources: finalSources }));
+
+        // If the agent said goodbye, skip the resolution check and auto-close after TIMER_MS.
+        // Otherwise start the normal inactivity → resolution check flow.
+        if (detectAgentFarewell(finalAnswer)) {
+          userInputTimer = setTimeout(() => {
+            userInputTimer = null;
+            closeAutoResolved();
+          }, TIMER_MS);
+        } else {
+          startResolutionTimer();
+        }
       });
     } catch (err) {
       log.error({ err }, "Error handling message");

@@ -141,16 +141,17 @@ export const conversationsAdminRouter = router({
           ]);
           // Compute SLA status using tenant config
           const now = Date.now();
-          const endTime = conv.status === "resolved" && conv.resolvedAt ? conv.resolvedAt.getTime() : now;
+          const isClosed = conv.status === "resolved" || conv.status === "auto-resolved";
+          const endTime = isClosed && conv.resolvedAt ? conv.resolvedAt.getTime() : now;
           const bizAge = slaElapsedMs(conv.createdAt.getTime(), endTime, sla);
           let slaStatus: "ok" | "warning" | "breached" = "ok";
           let slaRemainingMs: number | null = null;
           if (bizAge > sla.resolutionMs) {
             slaStatus = "breached";
-          } else if (conv.status !== "resolved" && bizAge > sla.resolutionMs * 0.75) {
+          } else if (!isClosed && bizAge > sla.resolutionMs * 0.75) {
             slaStatus = "warning";
           }
-          if (conv.status !== "resolved") {
+          if (!isClosed) {
             slaRemainingMs = sla.resolutionMs - slaElapsedMs(conv.createdAt.getTime(), now, sla);
           }
 
@@ -166,10 +167,12 @@ export const conversationsAdminRouter = router({
             })),
             slaStatus,
             slaRemainingMs,
+            escalationContact: conv.escalationContact ?? null,
             messages: msgs.map((m) => ({
               id: m.id,
               role: m.role,
               content: m.content,
+              webSources: (m.sources as { title: string; url: string }[] | null) ?? null,
               timestamp: m.createdAt.toISOString(),
             })),
             notes: notes.map((n) => ({
@@ -190,7 +193,7 @@ export const conversationsAdminRouter = router({
       z.object({
         tenantId: z.string().uuid(),
         conversationId: z.string().uuid(),
-        status: z.enum(["new", "open", "resolved", "escalated"]).optional(),
+        status: z.enum(["new", "open", "resolved", "escalated", "auto-resolved"]).optional(),
         priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
         departmentId: z.string().uuid().nullable().optional(),
         intent: z.string().nullable().optional(),
@@ -200,6 +203,19 @@ export const conversationsAdminRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { tenantId, conversationId, ...data } = input;
+
+      // Guard: auto-resolved tickets are locked — status cannot be changed
+      if (data.status !== undefined) {
+        const [current] = await ctx.db
+          .select({ status: conversations.status })
+          .from(conversations)
+          .where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, tenantId)))
+          .limit(1);
+        if (current?.status === "auto-resolved") {
+          throw new Error("Auto-resolved tickets cannot be edited");
+        }
+      }
+
       const now = new Date();
       const set: Record<string, unknown> = { ...data, updatedAt: now };
 
@@ -310,7 +326,9 @@ export const conversationsAdminRouter = router({
         .where(eq(conversations.tenantId, input.tenantId));
 
       const total = convs.length;
-      const resolved = convs.filter((c) => c.status === "resolved").length;
+      const resolved = convs.filter(
+        (c) => c.status === "resolved" || c.status === "auto-resolved",
+      ).length;
       const escalated = convs.filter(
         (c) => c.status === "escalated" || c.wasEscalated,
       ).length;

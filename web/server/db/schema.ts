@@ -117,7 +117,7 @@ export const conversations = pgTable("conversations", {
     .notNull()
     .references(() => tenants.id, { onDelete: "cascade" }),
   sessionId: varchar("session_id", { length: 255 }).notNull(),
-  status: varchar("status", { length: 20 }).notNull().default("new"), // new | open | resolved | escalated
+  status: varchar("status", { length: 20 }).notNull().default("new"), // new | open | resolved | escalated | auto-resolved
   priority: varchar("priority", { length: 20 }).notNull().default("normal"), // low | normal | high | urgent
   departmentId: uuid("department_id").references(() => departments.id, {
     onDelete: "set null",
@@ -129,6 +129,13 @@ export const conversations = pgTable("conversations", {
   firstResponseAt: timestamp("first_response_at", { withTimezone: true }),
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   escalatedAt: timestamp("escalated_at", { withTimezone: true }),
+  autoResolvedAt: timestamp("auto_resolved_at", { withTimezone: true }),
+  // Escalation contact info — collected when user requests department callback
+  escalationContact: json("escalation_contact").$type<{
+    name: string;
+    phone: string;
+    email?: string;
+  }>(),
   ...timestamps,
 });
 
@@ -141,6 +148,8 @@ export const messages = pgTable("messages", {
     .references(() => conversations.id, { onDelete: "cascade" }),
   role: varchar("role", { length: 20 }).notNull(), // "user" | "assistant"
   content: text("content").notNull(),
+  // Web source links returned by the search tool — only set on assistant messages
+  sources: json("sources").$type<{ title: string; url: string }[]>(),
   ...timestamps,
 });
 

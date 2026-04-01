@@ -41,6 +41,22 @@ const STATUS_OPTIONS: { value: Conversation["status"]; label: string; color: str
   { value: "resolved", label: "Solved", color: "gray" },
 ];
 
+const STATUS_BADGE_COLOR: Record<string, string> = {
+  new: "orange",
+  open: "green",
+  escalated: "red",
+  resolved: "gray",
+  "auto-resolved": "teal",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  new: "New",
+  open: "Open",
+  escalated: "Escalated",
+  resolved: "Solved",
+  "auto-resolved": "Auto-Resolved",
+};
+
 const PRIORITY_OPTIONS: { value: string; label: string; color: string }[] = [
   { value: "urgent", label: "Urgent", color: "red" },
   { value: "high", label: "High", color: "orange" },
@@ -148,19 +164,32 @@ export default function TicketDetailPanel({
           {/* Status */}
           <Box>
             <FieldLabel>Status</FieldLabel>
-            <Select
-              size="xs"
-              mt={1}
-              value={conversation.status}
-              onChange={(e) => onStatusChange(conversation.id, e.target.value as Conversation["status"])}
-              bg="gray.50"
-              borderColor="gray.200"
-              fontSize="12px"
-            >
-              {STATUS_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </Select>
+            {conversation.status === "auto-resolved" ? (
+              <Badge
+                mt={1}
+                fontSize="11px"
+                colorScheme="teal"
+                variant="subtle"
+                display="block"
+                w="fit-content"
+              >
+                Auto-Resolved
+              </Badge>
+            ) : (
+              <Select
+                size="xs"
+                mt={1}
+                value={conversation.status}
+                onChange={(e) => onStatusChange(conversation.id, e.target.value as Conversation["status"])}
+                bg="gray.50"
+                borderColor="gray.200"
+                fontSize="12px"
+              >
+                {STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </Select>
+            )}
           </Box>
 
           {/* Department */}
@@ -268,6 +297,27 @@ export default function TicketDetailPanel({
                conversation.slaStatus === "warning" ? "Warning" : "On Track"}
             </Badge>
           </Box>
+
+          {/* Escalation Contact — shown when collected via widget */}
+          {conversation.escalationContact && (
+            <>
+              <Divider />
+              <Box>
+                <FieldLabel>Escalation Contact</FieldLabel>
+                <HStack mt={1} spacing={1.5}>
+                  <Text fontSize="12px" color="gray.700">👤 {conversation.escalationContact.name}</Text>
+                </HStack>
+                <HStack mt={1} spacing={1.5}>
+                  <Text fontSize="12px" color="gray.700">📞 {conversation.escalationContact.phone}</Text>
+                </HStack>
+                {conversation.escalationContact.email && (
+                  <HStack mt={1} spacing={1.5}>
+                    <Text fontSize="12px" color="gray.700">✉ {conversation.escalationContact.email}</Text>
+                  </HStack>
+                )}
+              </Box>
+            </>
+          )}
 
           <Divider />
 

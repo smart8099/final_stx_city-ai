@@ -4,12 +4,20 @@
  * Tenant context is injected via AsyncLocalStorage so the tool can access it
  * even when running inside the LangChain agent executor without passing it
  * as a function argument.
+ *
+ * The Tavily client is created once at module load time (singleton) so that
+ * connection setup and module resolution overhead are not repeated on every
+ * search call.
  */
 import { AsyncLocalStorage } from "async_hooks";
+import { tavily } from "@tavily/core";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { env } from "@/server/config";
 import type { Tenant } from "@/server/db/schema";
+
+/** Module-level Tavily client — created once, reused across all search calls. */
+const tavilyClient = tavily({ apiKey: env.TAVILY_API_KEY });
 
 // AsyncLocalStorage replaces Python's ContextVar
 const tenantStorage = new AsyncLocalStorage<Tenant>();
@@ -29,18 +37,16 @@ export const searchCityWebsite = tool(
     const tenant = getCurrentTenant();
 
     try {
-      const { tavily } = await import("@tavily/core");
-      const client = tavily({ apiKey: env.TAVILY_API_KEY });
-
       const domains: string[] =
         (tenant.searchDomains as string[] | null)?.length
           ? (tenant.searchDomains as string[])
           : [tenant.websiteDomain];
 
-      const response = await client.search(query, {
+      const response = await tavilyClient.search(query, {
         includeDomains: domains,
         searchDepth: "basic",
-        maxResults: 5,
+        maxResults: 3,
+        timeout: 8000,
       });
 
       const results = (response.results ?? [])

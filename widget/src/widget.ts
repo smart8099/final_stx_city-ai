@@ -9,7 +9,7 @@
  */
 import { ChatUI } from './chat-ui';
 import { fetchTenantConfig } from './config';
-import { getOrCreateSessionId } from './session';
+import { getOrCreateSessionId, createNewSessionId } from './session';
 import type { TenantConfig } from './types';
 import { CityAssistWSClient } from './websocket-client';
 
@@ -81,9 +81,20 @@ export class CityAssistWidget {
     const wsUrl =
       this.options.wsUrl ?? `${httpToWs(this.options.apiUrl)}/api/ws`;
 
+    this._mountWsClient(wsUrl);
+
+    this.ui.setOnNewConversation(() => this._resetConversation(wsUrl));
+  }
+
+  /**
+   * Creates and mounts a new WebSocket client, wiring all frame handlers to the UI.
+   *
+   * @param wsUrl - The WebSocket endpoint URL.
+   */
+  private _mountWsClient(wsUrl: string): void {
     this.wsClient = new CityAssistWSClient({
       wsUrl,
-      apiKey: this.config.api_key,
+      apiKey: this.config!.api_key,
       sessionId: this.sessionId,
       onToken: (token) => this.ui!.appendToken(token),
       onDone: (sources) => this.ui!.finalizeMessage(sources),
@@ -91,13 +102,52 @@ export class CityAssistWidget {
       onReady: () => {
         // WebSocket authed — widget is fully ready.
       },
+      onSystemMessage: (content) => {
+        this.ui!.showSystemMessage(content);
+      },
+      onResolutionCheck: () => {
+        this.ui!.showResolutionCheck((resolved) => {
+          this.wsClient!.sendFrame({ type: 'resolution_response', resolved });
+        });
+      },
+      onMoreQuestionsCheck: () => {
+        this.ui!.showMoreQuestionsCheck((hasMore) => {
+          this.wsClient!.sendFrame({ type: 'more_questions_response', hasMore });
+        });
+      },
+      onEscalationOffer: (department) => {
+        this.ui!.showEscalationOffer(department, () => {
+          this.wsClient!.sendFrame({ type: 'escalation_accept' });
+        });
+      },
+      onContactForm: () => {
+        this.ui!.showContactForm((name, phone, email) => {
+          this.wsClient!.sendFrame({ type: 'contact_submit', name, phone, email });
+        });
+      },
+      onSessionClosed: (reason) => {
+        this.ui!.closeSession(reason);
+      },
     });
 
-    this.ui.setOnSend((text) => {
+    this.ui!.setOnSend((text) => {
       this.ui!.appendUserMessage(text);
       this.ui!.startAssistantMessage();
       this.wsClient!.send(text);
     });
+  }
+
+  /**
+   * Resets the widget to a fresh conversation state: new session ID, clears
+   * messages, and reconnects the WebSocket with the new session.
+   *
+   * @param wsUrl - The WebSocket endpoint URL to reconnect to.
+   */
+  private _resetConversation(wsUrl: string): void {
+    this.wsClient?.destroy();
+    this.sessionId = createNewSessionId();
+    this.ui!.reset();
+    this._mountWsClient(wsUrl);
   }
 
   /**
