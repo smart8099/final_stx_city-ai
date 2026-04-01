@@ -1,13 +1,9 @@
 /**
- * Email delivery service with SendGrid as primary provider,
- * SMTP (nodemailer) as fallback.
+ * Email delivery service using SendGrid.
  *
- * Provider priority: SendGrid → SMTP → log URL to console.
+ * Requires SENDGRID_API_KEY and SENDGRID_FROM_EMAIL env vars.
  */
 import sgMail from "@sendgrid/mail";
-import nodemailer from "nodemailer";
-
-// ── SendGrid ────────────────────────────────────────────────────────────────
 
 /**
  * Initialise and return true if SendGrid is configured.
@@ -17,25 +13,6 @@ function initSendGrid(): boolean {
   if (!key) return false;
   sgMail.setApiKey(key);
   return true;
-}
-
-// ── SMTP (nodemailer) — fallback ────────────────────────────────────────────
-
-/**
- * Build a nodemailer SMTP transport from env vars. Returns null if not configured.
- */
-function getSmtpTransport() {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASSWORD;
-  if (!host || !user || !pass) return null;
-
-  return nodemailer.createTransport({
-    host,
-    port: Number(process.env.SMTP_PORT ?? 587),
-    secure: false,
-    auth: { user, pass },
-  });
 }
 
 // ── Send invitation email ───────────────────────────────────────────────────
@@ -70,29 +47,8 @@ export async function sendInvitationEmail(opts: {
     </div>
   `;
 
-  const smtpFrom = process.env.SMTP_USER;
-  const sgFrom = process.env.SENDGRID_FROM_EMAIL;
+  const fromEmail = process.env.SENDGRID_FROM_EMAIL ?? "noreply@cityassist.io";
 
-  // Try SMTP first (Gmail App Password — avoids DMARC alignment issues)
-  const smtp = getSmtpTransport();
-  if (smtp && smtpFrom) {
-    try {
-      const info = await smtp.sendMail({
-        from: `CityAssist <${smtpFrom}>`,
-        to: opts.to,
-        subject,
-        html,
-      });
-      console.log("[email] Sent via SMTP to", opts.to, "messageId:", info.messageId);
-      return { sent: true, id: info.messageId };
-    } catch (err) {
-      console.error("[email] SMTP failed:", err);
-      // Fall through to SendGrid
-    }
-  }
-
-  // Try SendGrid as fallback
-  const fromEmail = sgFrom ?? smtpFrom ?? "noreply@cityassist.io";
   if (initSendGrid()) {
     try {
       const [response] = await sgMail.send({
@@ -109,7 +65,7 @@ export async function sendInvitationEmail(opts: {
     }
   }
 
-  // Neither configured — log the URL
-  console.log("[email] No email provider configured — invite URL:", opts.inviteUrl);
+  // SendGrid not configured — log the URL
+  console.log("[email] SendGrid not configured — invite URL:", opts.inviteUrl);
   return { sent: false, reason: "no_provider", inviteUrl: opts.inviteUrl };
 }
