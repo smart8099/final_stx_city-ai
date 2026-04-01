@@ -14,7 +14,8 @@ export const env = createEnv({
     // LLM
     LLM_PROVIDER: z.enum(["groq", "anthropic"]).default("groq"),
     LLM_MODEL: z.string().default("llama-3.1-8b-instant"),
-    LLM_TEMPERATURE: z.coerce.number().default(0.0),
+    ROUTING_MODEL: z.string().default("llama-3.3-70b-versatile"),
+    LLM_TEMPERATURE: z.coerce.number().default(0.3),
     LLM_MAX_TOKENS: z.coerce.number().int().default(1024),
     GROQ_API_KEY: z.string().default(""),
     ANTHROPIC_API_KEY: z.string().default(""),
@@ -70,6 +71,7 @@ export const env = createEnv({
     REDIS_URL: process.env.REDIS_URL,
     LLM_PROVIDER: process.env.LLM_PROVIDER,
     LLM_MODEL: process.env.LLM_MODEL,
+    ROUTING_MODEL: process.env.ROUTING_MODEL,
     LLM_TEMPERATURE: process.env.LLM_TEMPERATURE,
     LLM_MAX_TOKENS: process.env.LLM_MAX_TOKENS,
     GROQ_API_KEY: process.env.GROQ_API_KEY,

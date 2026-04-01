@@ -1,3 +1,9 @@
+/**
+ * Drizzle ORM schema for CityAssist.
+ *
+ * Defines all tables, relations, and inferred TypeScript types for the
+ * multi-tenant civic chatbot platform.
+ */
 import {
   boolean,
   doublePrecision,
@@ -6,6 +12,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -141,6 +148,36 @@ export const messages = pgTable("messages", {
   ...timestamps,
 });
 
+// ── Conversation Departments (junction table) ─────────────────────────────────
+
+/**
+ * Junction table linking conversations to one or more departments.
+ *
+ * Populated automatically by the LLM routing layer after each assistant response.
+ * A conversation may belong to multiple departments (e.g. pothole → Public Works,
+ * fire risk → Fire Department). The unique constraint prevents duplicate entries.
+ */
+export const conversationDepartments = pgTable(
+  "conversation_departments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    departmentId: uuid("department_id")
+      .notNull()
+      .references(() => departments.id, { onDelete: "cascade" }),
+    detectedAt: timestamp("detected_at", { withTimezone: true }).defaultNow().notNull(),
+    triggerMessageId: uuid("trigger_message_id").references(() => messages.id, {
+      onDelete: "set null",
+    }),
+    reason: text("reason"),
+  },
+  (table) => ({
+    uniq: unique().on(table.conversationId, table.departmentId),
+  }),
+);
+
 // ── Internal Notes ────────────────────────────────────────────────────────────
 
 export const internalNotes = pgTable("internal_notes", {
@@ -255,6 +292,18 @@ export const conversationsRelations = relations(conversations, ({ one, many }) =
   department: one(departments, { fields: [conversations.departmentId], references: [departments.id] }),
   messages: many(messages),
   notes: many(internalNotes),
+  conversationDepartments: many(conversationDepartments),
+}));
+
+export const conversationDepartmentsRelations = relations(conversationDepartments, ({ one }) => ({
+  conversation: one(conversations, {
+    fields: [conversationDepartments.conversationId],
+    references: [conversations.id],
+  }),
+  department: one(departments, {
+    fields: [conversationDepartments.departmentId],
+    references: [departments.id],
+  }),
 }));
 
 export const internalNotesRelations = relations(internalNotes, ({ one }) => ({
@@ -321,3 +370,5 @@ export type TenantMembership = typeof tenantMemberships.$inferSelect;
 export type NewTenantMembership = typeof tenantMemberships.$inferInsert;
 export type Invitation = typeof invitations.$inferSelect;
 export type NewInvitation = typeof invitations.$inferInsert;
+export type ConversationDepartment = typeof conversationDepartments.$inferSelect;
+export type NewConversationDepartment = typeof conversationDepartments.$inferInsert;

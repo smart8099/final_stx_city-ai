@@ -30,7 +30,7 @@ import {
   FiPlus,
   FiTrash2,
 } from "react-icons/fi";
-import { Conversation, INTENT_LABELS, InternalNote } from "@/lib/types";
+import { Conversation, INTENT_LABELS, InternalNote, RoutedDepartment } from "@/lib/types";
 import { useDepartments } from "@/lib/department-store";
 import { useMacros } from "@/lib/macro-store";
 import ConversationThread from "./ConversationThread";
@@ -199,6 +199,35 @@ export default function TicketDetailPanel({
               </Select>
             )}
           </Box>
+
+          {/* Auto-routed departments */}
+          {conversation.routedDepartments && conversation.routedDepartments.length > 0 && (
+            <Box>
+              <FieldLabel>Auto-routed to</FieldLabel>
+              <VStack spacing={1} mt={1} align="stretch">
+                {(conversation.routedDepartments as RoutedDepartment[]).map((rd) => (
+                  <Box
+                    key={rd.departmentId}
+                    bg="blue.50"
+                    border="1px solid"
+                    borderColor="blue.100"
+                    borderRadius="md"
+                    px={2}
+                    py={1}
+                  >
+                    <Text fontSize="11px" fontWeight="600" color="blue.700">
+                      {rd.departmentName}
+                    </Text>
+                    {rd.reason && (
+                      <Text fontSize="10px" color="blue.500" mt={0.5}>
+                        {rd.reason}
+                      </Text>
+                    )}
+                  </Box>
+                ))}
+              </VStack>
+            </Box>
+          )}
 
           {/* Assignee */}
           <Box>
@@ -444,9 +473,16 @@ export default function TicketDetailPanel({
           <Badge colorScheme={statusCfg?.color || "gray"} fontSize="11px" textTransform="capitalize">
             {conversation.status}
           </Badge>
-          {conversation.department && (
-            <Badge fontSize="11px" colorScheme="blue" variant="subtle">{conversation.department}</Badge>
-          )}
+          {conversation.routedDepartments && conversation.routedDepartments.length > 0
+            ? (conversation.routedDepartments as RoutedDepartment[]).map((rd) => (
+                <Badge key={rd.departmentId} fontSize="11px" colorScheme="blue" variant="subtle">
+                  {rd.departmentName}
+                </Badge>
+              ))
+            : conversation.department && (
+                <Badge fontSize="11px" colorScheme="blue" variant="subtle">{conversation.department}</Badge>
+              )
+          }
           {conversation.priority && conversation.priority !== "normal" && (
             <Badge
               fontSize="11px"

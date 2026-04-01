@@ -1,3 +1,10 @@
+/**
+ * CityAssist Widget — chat UI renderer.
+ *
+ * Builds the Shadow DOM panel, handles streaming token appends, and re-renders
+ * the final assistant message as formatted markdown (bold, clickable links)
+ * once the stream completes. No external dependencies — uses the DOM API only.
+ */
 import type { Source } from './types';
 
 export interface ChatUIOptions {
@@ -167,7 +174,9 @@ const STYLES = `
     margin-top: 6px;
     font-size: 11px;
   }
-  .sources a { color: var(--ca-brand, #1a56db); text-decoration: underline; display: block; }
+  .sources a { color: var(--ca-brand, #1a56db); text-decoration: underline; display: block; font-weight: 600; }
+  .msg.assistant a { color: var(--ca-brand, #1a56db); text-decoration: underline; font-weight: 600; }
+  .msg.assistant strong { font-weight: 700; }
 
   #input-row {
     display: flex;
@@ -227,6 +236,65 @@ const SEND_ICON = `
   <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
 </svg>`;
 
+/**
+ * Parses inline markdown tokens in a single line of text and appends
+ * the resulting DOM nodes to `parent`. Handles **bold**, [text](url),
+ * and bare https:// URLs. Uses DOM API only — no innerHTML, no XSS risk.
+ *
+ * @param text   - A single line of text to parse.
+ * @param parent - The DOM node to append rendered children to.
+ */
+function renderInline(text: string, parent: Node): void {
+  const TOKEN = /\*\*(.+?)\*\*|\[([^\]]+)\]\((https?:\/\/[^)]+)\)|(https?:\/\/\S+)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = TOKEN.exec(text)) !== null) {
+    if (m.index > last) {
+      parent.appendChild(document.createTextNode(text.slice(last, m.index)));
+    }
+    if (m[1] !== undefined) {
+      const s = document.createElement('strong');
+      s.textContent = m[1];
+      parent.appendChild(s);
+    } else if (m[2] !== undefined) {
+      const a = document.createElement('a');
+      a.href = m[3];
+      a.textContent = m[2];
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      parent.appendChild(a);
+    } else {
+      const a = document.createElement('a');
+      a.href = m[4];
+      a.textContent = m[4];
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      parent.appendChild(a);
+    }
+    last = TOKEN.lastIndex;
+  }
+  if (last < text.length) {
+    parent.appendChild(document.createTextNode(text.slice(last)));
+  }
+}
+
+/**
+ * Converts a markdown string to a DocumentFragment using safe DOM API calls.
+ * Supports **bold**, [text](url), bare https:// URLs, and newline→<br>.
+ *
+ * @param text - The raw markdown string to render.
+ * @returns A DocumentFragment ready to append into the message bubble.
+ */
+function renderMarkdown(text: string): DocumentFragment {
+  const frag = document.createDocumentFragment();
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (i > 0) frag.appendChild(document.createElement('br'));
+    renderInline(lines[i], frag);
+  }
+  return frag;
+}
+
 export class ChatUI {
   private shadow: ShadowRoot;
   private panel!: HTMLElement;
@@ -235,6 +303,7 @@ export class ChatUI {
   private sendBtn!: HTMLButtonElement;
   private isOpen = false;
   private currentStreamEl: HTMLElement | null = null;
+  private currentStreamText = '';
   private onSend: ((text: string) => void) | null = null;
   private opts: ChatUIOptions;
 
@@ -261,23 +330,46 @@ export class ChatUI {
     this._scrollToBottom();
   }
 
+  /** Creates a new streaming assistant bubble and resets the text accumulator. */
   startAssistantMessage(): void {
     const el = this._msgEl('assistant');
     el.classList.add('streaming');
     this.messagesContainer.appendChild(el);
     this.currentStreamEl = el;
+    this.currentStreamText = '';
     this._scrollToBottom();
   }
 
+  /**
+   * Appends a streaming token to the current assistant bubble.
+   * Stores raw text during streaming; markdown is rendered on finalize.
+   *
+   * @param token - The next streamed token string.
+   */
   appendToken(token: string): void {
     if (!this.currentStreamEl) this.startAssistantMessage();
-    this.currentStreamEl!.textContent = (this.currentStreamEl!.textContent ?? '') + token;
+    this.currentStreamText += token;
+    this.currentStreamEl!.textContent = this.currentStreamText;
     this._scrollToBottom();
   }
 
+  /**
+   * Finalizes the assistant message: re-renders the accumulated text as
+   * markdown (bold + clickable links), then appends source links below.
+   *
+   * @param sources - Source URLs to display below the answer.
+   */
   finalizeMessage(sources: Source[]): void {
     if (this.currentStreamEl) {
       this.currentStreamEl.classList.remove('streaming');
+
+      // Re-render plain text as formatted markdown
+      while (this.currentStreamEl.firstChild) {
+        this.currentStreamEl.removeChild(this.currentStreamEl.firstChild);
+      }
+      this.currentStreamEl.appendChild(renderMarkdown(this.currentStreamText));
+      this.currentStreamText = '';
+
       if (sources.length > 0) {
         const sourcesEl = document.createElement('div');
         sourcesEl.className = 'sources';
