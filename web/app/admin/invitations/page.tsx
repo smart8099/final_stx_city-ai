@@ -35,7 +35,7 @@ import {
   useDisclosure,
   useToast,
 } from "@chakra-ui/react";
-import { FiPlus, FiTrash2, FiMail, FiSearch, FiCopy } from "react-icons/fi";
+import { FiPlus, FiXCircle, FiTrash2, FiMail, FiSearch, FiCopy } from "react-icons/fi";
 import { trpc } from "@/lib/trpc";
 
 const ROLE_COLORS: Record<string, string> = {
@@ -56,10 +56,15 @@ export default function AdminInvitationsPage() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
 
+  const [lastRevokeAction, setLastRevokeAction] = useState<"revoke" | "delete">("delete");
   const revokeInvitation = trpc.admin.revokeInvitation.useMutation({
     onSuccess: () => {
       utils.admin.listInvitations.invalidate();
-      toast({ title: "Invitation Record deleted", status: "info", duration: 2000 });
+      toast({
+        title: lastRevokeAction === "revoke" ? "Invitation revoked" : "Record deleted",
+        status: "info",
+        duration: 2000,
+      });
     },
   });
 
@@ -300,34 +305,33 @@ export default function AdminInvitationsPage() {
                     </Text>
                   </Td>
                   <Td py={0}>
-                    <HStack spacing={1} w="56px">
-                      {inv.status === "pending" ? (
+                    <HStack spacing={0}>
+                      {inv.status === "pending" && (
                         <Tooltip label="Copy invite link">
                           <IconButton
                             aria-label="Copy link"
-                            icon={<FiCopy />}
+                            icon={<FiCopy size={13} />}
                             size="xs"
                             variant="ghost"
-                            color="gray.500"
-                            _hover={{ color: "blue.500" }}
-                            onClick={() => copyInviteLink(inv.token)}
+                            color="gray.400"
+                            _hover={{ color: "blue.500", bg: "transparent" }}
+                          onClick={() => copyInviteLink(inv.token)}
                           />
                         </Tooltip>
-                      ) : (
-                        <Box w="24px" />
                       )}
-                      <Tooltip label="Delete">
+                      <Tooltip label={inv.status === "pending" ? "Revoke" : "Delete record"}>
                         <IconButton
-                          aria-label="Delete"
-                          icon={<FiTrash2 />}
+                          aria-label={inv.status === "pending" ? "Revoke" : "Delete record"}
+                          icon={inv.status === "pending" ? <FiXCircle size={13} /> : <FiTrash2 size={13} />}
                           size="xs"
                           variant="ghost"
-                          color="gray.500"
-                          _hover={{ color: "red.500" }}
+                          color="gray.400"
+                          _hover={{ color: "red.500", bg: "transparent" }}
                           isLoading={revokeInvitation.isPending}
-                          onClick={() =>
-                            revokeInvitation.mutate({ id: inv.id })
-                          }
+                          onClick={() => {
+                            setLastRevokeAction(inv.status === "pending" ? "revoke" : "delete");
+                            revokeInvitation.mutate({ id: inv.id });
+                          }}
                         />
                       </Tooltip>
                     </HStack>

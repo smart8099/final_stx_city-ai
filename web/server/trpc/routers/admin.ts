@@ -21,6 +21,14 @@ import { sendInvitationEmail } from "@/server/services/email_service";
 import { getUserByClerkId } from "@/server/services/user_service";
 import { getCurrentUsage } from "@/server/services/quota_service";
 
+/**
+ * Permanent tech admin emails that cannot be removed or demoted.
+ */
+const PROTECTED_ADMINS = [
+  "yulianadenissejasso@gmail.com",
+  "abdulbasitm810@gmail.com",
+];
+
 export const adminRouter = router({
   // ── Overview ───────────────────────────────────────────────────────────────
   overview: techAdminProcedure.query(async ({ ctx }) => {
@@ -264,6 +272,26 @@ export const adminRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { membershipId, ...data } = input;
+
+      // Block role changes or deactivation for protected tech admins
+      if (data.roleId || data.isActive === false) {
+        const [mem] = await ctx.db
+          .select({ userId: tenantMemberships.userId })
+          .from(tenantMemberships)
+          .where(eq(tenantMemberships.id, membershipId))
+          .limit(1);
+        if (mem) {
+          const [u] = await ctx.db
+            .select({ email: users.email })
+            .from(users)
+            .where(eq(users.id, mem.userId))
+            .limit(1);
+          if (u && PROTECTED_ADMINS.includes(u.email.toLowerCase())) {
+            throw new Error("This account is a permanent tech admin and cannot be modified.");
+          }
+        }
+      }
+
       const updated = await updateMembership(ctx.db, membershipId, data);
       if (!updated) throw new Error("Membership not found");
 
@@ -289,6 +317,18 @@ export const adminRouter = router({
         .from(tenantMemberships)
         .where(eq(tenantMemberships.id, input.membershipId))
         .limit(1);
+
+      // Block removal of protected tech admins
+      if (membership) {
+        const [user] = await ctx.db
+          .select({ email: users.email })
+          .from(users)
+          .where(eq(users.id, membership.userId))
+          .limit(1);
+        if (user && PROTECTED_ADMINS.includes(user.email.toLowerCase())) {
+          throw new Error("This account is a permanent tech admin and cannot be removed.");
+        }
+      }
 
       const ok = await removeMembership(ctx.db, input.membershipId);
       if (!ok) throw new Error("Membership not found");
@@ -569,6 +609,15 @@ export const adminRouter = router({
   deactivateUser: techAdminProcedure
     .input(z.object({ userId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      const [target] = await ctx.db
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, input.userId))
+        .limit(1);
+      if (target && PROTECTED_ADMINS.includes(target.email.toLowerCase())) {
+        throw new Error("This account is a permanent platform administrator and cannot be deactivated.");
+      }
+
       await ctx.db
         .update(tenantMemberships)
         .set({ isActive: false })
@@ -603,19 +652,41 @@ export const adminRouter = router({
       return { success: true };
     }),
 
-  /** Deletes a user and all their memberships permanently. */
+  /** Deletes a user and all their memberships permanently, including from Clerk. */
   deleteUser: techAdminProcedure
     .input(z.object({ userId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      const [target] = await ctx.db
+        .select({ email: users.email, clerkId: users.clerkId })
+        .from(users)
+        .where(eq(users.id, input.userId))
+        .limit(1);
+      if (!target) throw new Error("User not found");
+
+      if (PROTECTED_ADMINS.includes(target.email.toLowerCase())) {
+        throw new Error("This account is a permanent platform administrator and cannot be deleted.");
+      }
+
+      // Remove from Clerk so the user can no longer sign in
+      try {
+        const { clerkClient } = await import("@clerk/nextjs/server");
+        const clerk = await clerkClient();
+        await clerk.users.deleteUser(target.clerkId);
+      } catch (err) {
+        console.error("[admin] Failed to delete Clerk user:", err);
+        // Continue with local deletion even if Clerk fails
+      }
+
       // Memberships cascade-delete via FK, but delete explicitly for clarity
       await ctx.db
         .delete(tenantMemberships)
         .where(eq(tenantMemberships.userId, input.userId));
-      const [deleted] = await ctx.db
+      await ctx.db
         .delete(users)
-        .where(eq(users.id, input.userId))
-        .returning();
-      if (!deleted) throw new Error("User not found");
+        .where(eq(users.id, input.userId));
+
+      await invalidateUserContext(ctx.redis, target.clerkId);
+
       return { success: true };
     }),
 

@@ -13,9 +13,10 @@ export function useRole() {
   const { tenantId } = useTenant();
   const { data: memberships } = trpc.me.memberships.useQuery();
 
-  const membership = memberships?.find(
-    (m) => m.tenantId === tenantId || m.tenantId === null,
-  );
+  // Prefer global (tech_admin) membership over tenant-scoped ones
+  const globalMembership = memberships?.find((m) => m.tenantId === null);
+  const tenantMembership = memberships?.find((m) => m.tenantId === tenantId);
+  const membership = globalMembership ?? tenantMembership;
 
   const roleName = membership?.roleName ?? null;
 

@@ -536,14 +536,13 @@ function EditUserModal({
             </Box>
             <HStack spacing={2}>
               {roleName && (
-                <Badge fontSize="10px" colorScheme={roleColor} borderRadius="full" px={2}>
+                <Badge fontSize="10px" colorScheme={roleColor} px={2}>
                   {roleName}
                 </Badge>
               )}
               <Badge
                 fontSize="10px"
                 colorScheme={isActive ? "green" : hasAnyMembership ? "red" : "orange"}
-                borderRadius="full"
                 px={2}
               >
                 {isActive ? "Active" : hasAnyMembership ? "Disabled" : "Unassigned"}
