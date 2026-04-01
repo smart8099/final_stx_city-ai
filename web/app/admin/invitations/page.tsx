@@ -370,6 +370,7 @@ function SendInvitationModal({
   cities: { id: string; name: string }[];
 }) {
   const [email, setEmail] = useState("");
+  const [emailError, setEmailError] = useState<string | undefined>(undefined);
   const [tenantId, setTenantId] = useState<string>("");
   const [roleId, setRoleId] = useState("");
   const [deptId, setDeptId] = useState("");
@@ -386,6 +387,7 @@ function SendInvitationModal({
       toast({ title: "Invitation sent", status: "success", duration: 3000 });
       utils.admin.listInvitations.invalidate();
       setEmail("");
+      setEmailError(undefined);
       setTenantId("");
       setRoleId("");
       setDeptId("");
@@ -435,17 +437,30 @@ function SendInvitationModal({
               </Text>
             </Flex>
             <Box px={4} py={3}>
-              <FormControl>
+              <FormControl isInvalid={!!emailError}>
                 <FormLabel fontSize="xs" color="gray.500" mb={1}>Email Address</FormLabel>
                 <Input
                   size="sm"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  isInvalid={!!emailError}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    const val = e.target.value;
+                    if (!val.trim()) { setEmailError(undefined); return; }
+                    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    setEmailError(re.test(val) ? undefined : "Invalid email format");
+                  }}
                   placeholder="user@example.com"
                   borderRadius="md"
-                  _focus={{ borderColor: "blue.400", boxShadow: "0 0 0 1px #3182ce" }}
                 />
+                {emailError ? (
+                  <Text fontSize="xs" color="red.500" mt={1}>{emailError}</Text>
+                ) : (
+                  <Text fontSize="10px" color="gray.400" mt={1.5}>
+                    The invitation link will be sent to this email.
+                  </Text>
+                )}
               </FormControl>
             </Box>
           </Box>
@@ -525,7 +540,7 @@ function SendInvitationModal({
             size="sm"
             borderRadius="full"
             isLoading={sendInvitation.isPending}
-            isDisabled={!email || !roleId}
+            isDisabled={!email || !roleId || !!emailError}
             onClick={() =>
               sendInvitation.mutate({
                 email,
