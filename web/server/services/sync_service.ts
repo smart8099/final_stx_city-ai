@@ -55,15 +55,18 @@ export async function syncUser(
   // 2. Check if user already has memberships
   let membership = await getActiveMembership(db, user.id);
 
-  // 3. Auto-provision tech_admin from ADMIN_EMAIL env var
-  if (!membership && isAdminEmail(email)) {
-    const techAdminRole = await findOrCreateTechAdminRole(db);
-    await createMembership(db, {
-      userId: user.id,
-      tenantId: null,
-      roleId: techAdminRole.id,
-    });
-    await invalidateUserContext(redis, clerkId);
+  // 3. Auto-provision tech_admin from ADMIN_EMAIL env var — these are permanent
+  //    admins whose role cannot be overridden by invitations
+  if (isAdminEmail(email)) {
+    if (!membership || membership.roleName !== "tech_admin") {
+      const techAdminRole = await findOrCreateTechAdminRole(db);
+      await createMembership(db, {
+        userId: user.id,
+        tenantId: null,
+        roleId: techAdminRole.id,
+      });
+      await invalidateUserContext(redis, clerkId);
+    }
     return { userId: user.id, role: "tech_admin", tenantSlug: null, redirect: "/admin" };
   }
 
