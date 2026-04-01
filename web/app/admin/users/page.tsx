@@ -56,7 +56,7 @@ const ROLE_COLORS: Record<string, string> = {
   tech_admin: "purple",
   city_admin: "blue",
   supervisor: "teal",
-  staff: "green",
+  staff: "cyan",
   member: "gray",
 };
 
@@ -552,7 +552,7 @@ function EditUserModal({
           </Flex>
         </Box>
 
-        <ModalCloseButton top={3} right={3} />
+        <ModalCloseButton top={3} right={3} size="sm" color="gray.400" _hover={{ color: "gray.600", bg: "transparent" }} />
 
         <ModalBody px={6} py={5}>
           <VStack spacing={5} align="stretch">

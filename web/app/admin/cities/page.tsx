@@ -264,7 +264,7 @@ function CreateCityModal({
             </Box>
           </Flex>
         </Box>
-        <ModalCloseButton top={3} right={3} />
+        <ModalCloseButton top={3} right={3} size="sm" color="gray.400" _hover={{ color: "gray.600", bg: "transparent" }} />
 
         <ModalBody px={6} py={5}>
           {/* City Details */}
