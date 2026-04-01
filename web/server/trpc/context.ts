@@ -1,15 +1,16 @@
 /**
  * tRPC request context — resolved once per HTTP request.
  *
- * Injects the authenticated tenant (from X-CityAssist-Key), admin flag
- * (from Clerk JWT), and shared db/redis singletons into every procedure.
+ * Injects the authenticated tenant (from X-CityAssist-Key), user context
+ * (from Clerk JWT + our RBAC tables), and shared db/redis singletons.
  */
 import { type NextRequest } from "next/server";
 import { db } from "@/server/db";
 import { getRedis } from "@/server/redis";
 import { getTenantByApiKey } from "@/server/services/tenant_service";
-import { verifyClerkAdmin } from "./clerk";
+import { verifyClerkAdmin, resolveUserContext } from "./clerk";
 import type { Tenant } from "@/server/db/schema";
+import type { UserContext } from "@/server/services/membership_service";
 
 /** Shared context available to all tRPC procedures. */
 export interface Context {
@@ -18,13 +19,17 @@ export interface Context {
   tenant: Tenant | null;
   isAdmin: boolean;
   req: NextRequest;
+  // RBAC fields
+  clerkId: string | null;
+  user: UserContext | null;
+  role: string | null;
+  userTenantId: string | null;
+  userDepartmentId: string | null;
+  permissions: string[];
 }
 
 /**
  * Builds the tRPC context for each incoming request.
- *
- * @param req - The incoming Next.js request.
- * @returns Resolved context including tenant, isAdmin, db, and redis.
  */
 export async function createContext(req: NextRequest): Promise<Context> {
   const redis = getRedis();
@@ -37,8 +42,23 @@ export async function createContext(req: NextRequest): Promise<Context> {
     if (tenant && !tenant.isActive) tenant = null;
   }
 
-  // Resolve Clerk admin
+  // Resolve Clerk admin (backward-compatible)
   const isAdmin = await verifyClerkAdmin(req);
 
-  return { db, redis, tenant, isAdmin, req };
+  // Resolve full user context from our RBAC tables
+  const userCtx = await resolveUserContext(req, db, redis);
+
+  return {
+    db,
+    redis,
+    tenant,
+    isAdmin,
+    req,
+    clerkId: userCtx?.clerkId ?? null,
+    user: userCtx,
+    role: userCtx?.role ?? null,
+    userTenantId: userCtx?.tenantId ?? null,
+    userDepartmentId: userCtx?.departmentId ?? null,
+    permissions: userCtx?.permissions ?? [],
+  };
 }

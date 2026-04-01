@@ -1,48 +1,28 @@
+/**
+ * Resolves the current tenant by URL slug.
+ *
+ * Fetches the tenant from the database via tRPC. No auto-provisioning —
+ * tenants are created manually by tech admins.
+ */
 "use client";
 
-import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-import { useOrganization, useAuth } from "@clerk/nextjs";
 import { trpc } from "@/lib/trpc";
 
-/**
- * Resolves the current tenant by slug. Auto-provisions a new tenant row
- * in the database if one doesn't exist yet for this Clerk organization.
- */
 export function useTenant() {
   const params = useParams();
   const slug = params.tenant_slug as string;
-  const { organization } = useOrganization();
-  const { isSignedIn, isLoaded: authLoaded } = useAuth();
 
-  const ensureTenant = trpc.tenants.getOrCreateBySlug.useMutation();
-  const [tenant, setTenant] = useState<{
-    id: string;
-    slug: string;
-    name: string;
-    websiteDomain: string;
-    apiKey: string;
-  } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Wait until Clerk auth is loaded and user is signed in so the Bearer token is available
-    if (slug && authLoaded && isSignedIn && !tenant && !ensureTenant.isPending) {
-      ensureTenant.mutate(
-        { slug, orgName: organization?.name },
-        {
-          onSuccess: (data) => setTenant(data),
-          onError: (err) => setError(err.message),
-        },
-      );
-    }
-  }, [slug, organization?.name, authLoaded, isSignedIn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { data: tenant, isLoading, error } = trpc.tenants.getBySlug.useQuery(
+    { slug },
+    { enabled: !!slug },
+  );
 
   return {
-    tenant,
+    tenant: tenant ?? null,
     tenantId: tenant?.id ?? null,
     slug,
-    isLoading: !tenant && !error,
-    error,
+    isLoading,
+    error: error?.message ?? null,
   };
 }

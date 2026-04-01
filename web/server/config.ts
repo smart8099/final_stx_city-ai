@@ -38,6 +38,9 @@ export const env = createEnv({
     // Clerk
     CLERK_SECRET_KEY: z.string().default(""),
 
+    // Resend (invitation emails)
+    RESEND_API_KEY: z.string().default(""),
+
     // Internal
     INTERNAL_SECRET: z.string().default(""),
 
@@ -84,6 +87,7 @@ export const env = createEnv({
     ALERT_FROM_EMAIL: process.env.ALERT_FROM_EMAIL,
     ADMIN_EMAIL: process.env.ADMIN_EMAIL,
     CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
     INTERNAL_SECRET: process.env.INTERNAL_SECRET,
     RESPONSE_CACHE_TTL_SECONDS: process.env.RESPONSE_CACHE_TTL_SECONDS,
     PERSIST_CHAT_MESSAGES: process.env.PERSIST_CHAT_MESSAGES,

@@ -14,6 +14,9 @@ const tenant: Tenant = {
   dailyRequestQuota: null,
   llmApiKey: null,
   widgetSettings: null,
+  location: null,
+  latitude: null,
+  longitude: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

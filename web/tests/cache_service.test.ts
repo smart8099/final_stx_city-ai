@@ -20,6 +20,9 @@ const mockTenant: Tenant = {
   dailyRequestQuota: null,
   llmApiKey: null,
   widgetSettings: null,
+  location: null,
+  latitude: null,
+  longitude: null,
   createdAt: new Date("2024-01-01"),
   updatedAt: new Date("2024-01-01"),
 };
