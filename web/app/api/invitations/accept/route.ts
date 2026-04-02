@@ -80,6 +80,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invitation expired" }, { status: 400 });
     }
 
+    // Enforce: signed-in email must match invitation email
+    if (email && invitation.email.toLowerCase() !== email.toLowerCase()) {
+      return NextResponse.json(
+        { error: "Signed-in email does not match invitation. Please sign out and use the correct account." },
+        { status: 403 },
+      );
+    }
+
     // Use the invitation email as the source of truth
     const user = await getOrCreateUser(db, clerkId!, invitation.email, name);
 
