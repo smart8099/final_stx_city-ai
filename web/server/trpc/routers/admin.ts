@@ -130,6 +130,18 @@ export const adminRouter = router({
       return { success: true, message: "Crawl triggered (stub)" };
     }),
 
+  /** Permanently deletes a city/tenant and all associated data (cascades via FK). */
+  deleteCity: techAdminProcedure
+    .input(z.object({ tenantId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const [deleted] = await ctx.db
+        .delete(tenants)
+        .where(eq(tenants.id, input.tenantId))
+        .returning();
+      if (!deleted) throw new Error("City not found");
+      return { success: true };
+    }),
+
   // ── Invitations ────────────────────────────────────────────────────────────
   sendInvitation: techAdminProcedure
     .input(

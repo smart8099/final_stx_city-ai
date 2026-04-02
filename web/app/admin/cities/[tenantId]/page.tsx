@@ -34,9 +34,15 @@ import {
   Switch,
   FormControl,
   FormLabel,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalBody,
+  ModalFooter,
+  ModalCloseButton,
   useToast,
 } from "@chakra-ui/react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   FiTrash2,
   FiArrowLeft,
@@ -68,9 +74,9 @@ export default function AdminCityDetailPage() {
     trpc.departments.list.useQuery({ tenantId });
 
   const city = cities?.find((c) => c.id === tenantId);
-  const removeMember = trpc.admin.removeMember.useMutation();
   const triggerCrawl = trpc.admin.triggerCrawl.useMutation();
   const utils = trpc.useUtils();
+  const [deletingMember, setDeletingMember] = useState<{ id: string; name: string } | null>(null);
 
   if (citiesLoading) {
     return (
@@ -255,17 +261,10 @@ export default function AdminCityDetailPage() {
                               icon={<FiTrash2 />}
                               size="xs"
                               variant="ghost"
-                              color="gray.500"
+                              color="gray.400"
                               _hover={{ color: "red.500" }}
-                              isLoading={removeMember.isPending}
                               onClick={() =>
-                                removeMember.mutate(
-                                  { membershipId: m.id },
-                                  {
-                                    onSuccess: () =>
-                                      utils.admin.listMembers.invalidate(),
-                                  },
-                                )
+                                setDeletingMember({ id: m.id, name: m.userName ?? m.userEmail })
                               }
                             />
                           </Tooltip>
@@ -287,6 +286,18 @@ export default function AdminCityDetailPage() {
           </TabPanel>
         </TabPanels>
       </Tabs>
+
+      {deletingMember && (
+        <DeleteMemberModal
+          membershipId={deletingMember.id}
+          memberName={deletingMember.name}
+          onClose={() => setDeletingMember(null)}
+          onSuccess={() => {
+            utils.admin.listMembers.invalidate();
+            setDeletingMember(null);
+          }}
+        />
+      )}
     </Box>
   );
 }
@@ -361,6 +372,7 @@ function GeneralTab({
   }
 
   return (
+    <>
     <Box
       bg="white"
       border="1px solid"
@@ -441,5 +453,187 @@ function GeneralTab({
         </Flex>
       </VStack>
     </Box>
+
+    {/* Delete City */}
+    <Box
+      bg="white"
+      border="1px solid"
+      borderColor="gray.200"
+      borderRadius="lg"
+      overflow="hidden"
+      mt={4}
+    >
+      <Flex px={4} py={2.5} bg="gray.50" borderBottom="1px solid" borderColor="gray.100">
+        <Text fontSize="11px" fontWeight="600" color="gray.500" textTransform="uppercase" letterSpacing="wider">
+          Danger Zone
+        </Text>
+      </Flex>
+      <DeleteCitySection tenantId={tenantId} cityName={city.name} />
+    </Box>
+  </>
+  );
+}
+
+/**
+ * Delete city section with confirmation input.
+ */
+function DeleteCitySection({ tenantId, cityName }: { tenantId: string; cityName: string }) {
+  const [showDeleteInput, setShowDeleteInput] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const toast = useToast();
+  const router = useRouter();
+  const utils = trpc.useUtils();
+
+  const deleteCity = trpc.admin.deleteCity.useMutation({
+    onSuccess: () => {
+      utils.admin.listCities.invalidate();
+      toast({ title: "City deleted permanently", status: "info", duration: 2000 });
+      router.push("/admin/cities");
+    },
+    onError: (err) => {
+      toast({ title: "Delete failed", description: err.message, status: "error", duration: 5000 });
+    },
+  });
+
+  return (
+    <>
+      <Flex align="center" justify="space-between" px={4} py={3}>
+        <HStack spacing={2.5}>
+          <Box w="8px" h="8px" borderRadius="full" bg="red.400" />
+          <Box>
+            <Text fontSize="xs" fontWeight="500" color="gray.700">
+              Delete City
+            </Text>
+            <Text fontSize="10px" color="gray.400">
+              Permanently remove {cityName} and all associated data
+            </Text>
+          </Box>
+        </HStack>
+        <Button
+          size="xs"
+          leftIcon={<FiTrash2 />}
+          colorScheme="red"
+          variant={showDeleteInput ? "solid" : "outline"}
+          borderRadius="full"
+          isLoading={deleteCity.isPending}
+          isDisabled={showDeleteInput && deleteConfirm !== "Delete city"}
+          onClick={() => {
+            if (!showDeleteInput) {
+              setShowDeleteInput(true);
+            } else {
+              deleteCity.mutate({ tenantId });
+            }
+          }}
+        >
+          Delete
+        </Button>
+      </Flex>
+      {showDeleteInput && (
+        <Box px={4} pb={3}>
+          <Input
+            size="sm"
+            borderRadius="md"
+            placeholder="Type 'Delete city' to confirm"
+            value={deleteConfirm}
+            onChange={(e) => setDeleteConfirm(e.target.value)}
+            bg="gray.50"
+            autoFocus
+          />
+        </Box>
+      )}
+    </>
+  );
+}
+
+/**
+ * Modal for confirming member removal with typed confirmation.
+ */
+function DeleteMemberModal({
+  membershipId,
+  memberName,
+  onClose,
+  onSuccess,
+}: {
+  membershipId: string;
+  memberName: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [confirmText, setConfirmText] = useState("");
+  const toast = useToast();
+
+  const removeMember = trpc.admin.removeMember.useMutation({
+    onSuccess: () => {
+      toast({ title: "Member removed", status: "info", duration: 2000 });
+      onSuccess();
+    },
+    onError: (err) => {
+      toast({ title: "Remove failed", description: err.message, status: "error", duration: 5000 });
+    },
+  });
+
+  return (
+    <Modal isOpen onClose={onClose} size="md" isCentered>
+      <ModalOverlay bg="blackAlpha.400" backdropFilter="blur(4px)" />
+      <ModalContent borderRadius="xl" overflow="hidden" boxShadow="xl">
+        <ModalCloseButton top={3} right={3} size="sm" color="gray.400" _hover={{ color: "gray.600", bg: "transparent" }} />
+
+        <ModalBody px={6} pt={6} pb={5}>
+          <Flex align="center" gap={3} mb={4}>
+            <Flex
+              w={10}
+              h={10}
+              borderRadius="full"
+              bg="red.50"
+              align="center"
+              justify="center"
+              flexShrink={0}
+            >
+              <FiTrash2 size={16} color="#E53E3E" />
+            </Flex>
+            <Box>
+              <Text fontSize="sm" fontWeight="600" color="gray.800" mb={1}>
+                Remove {memberName}?
+              </Text>
+              <Text fontSize="xs" color="gray.500">
+                This will revoke their access to this city. They will need a new invitation or to be reassigned a role at a city to regain access.
+              </Text>
+            </Box>
+          </Flex>
+
+          <FormControl>
+            <FormLabel fontSize="xs" color="gray.500" mb={1} textAlign="left">
+              Type &quot;Delete member&quot; to confirm
+            </FormLabel>
+            <Input
+              size="sm"
+              borderRadius="md"
+              placeholder="Delete member"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              autoFocus
+              _focus={{ borderColor: "red.400", boxShadow: "0 0 0 1px #E53E3E" }}
+            />
+          </FormControl>
+        </ModalBody>
+
+        <ModalFooter borderTop="1px solid" borderColor="gray.100" px={6} py={3} justifyContent="center">
+          <Button variant="ghost" size="sm" mr={2} onClick={onClose} borderRadius="full">
+            Cancel
+          </Button>
+          <Button
+            colorScheme="red"
+            size="sm"
+            borderRadius="full"
+            leftIcon={<FiTrash2 />}
+            isLoading={removeMember.isPending}
+            isDisabled={confirmText !== "Delete member"}
+            onClick={() => removeMember.mutate({ membershipId })}
+          >
+            Remove Member
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }

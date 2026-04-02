@@ -218,9 +218,12 @@ export default function AdminInvitationsPage() {
             />
           </Tooltip>
           <Button
-            leftIcon={<FiPlus />}
-            colorScheme="blue"
             size="sm"
+            variant="ghost"
+            leftIcon={<FiPlus size={14} />}
+            fontWeight="500"
+            color="gray.500"
+            _hover={{ bg: "gray.100", color: "blue.600" }}
             onClick={onOpen}
           >
             Send Invitation
