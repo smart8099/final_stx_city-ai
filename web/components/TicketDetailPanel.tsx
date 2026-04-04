@@ -73,6 +73,10 @@ interface Props {
   onAssigneeChange: (id: string, assignee: string) => void;
   onAddNote: (id: string, note: InternalNote) => void;
   tenantId: string | null;
+  /** When true, all editing controls are hidden (member role). */
+  readOnly?: boolean;
+  /** When true, assignee and department fields are shown (supervisor+). */
+  canAssign?: boolean;
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
@@ -92,10 +96,14 @@ export default function TicketDetailPanel({
   onAssigneeChange,
   onAddNote,
   tenantId,
+  readOnly = false,
+  canAssign = true,
 }: Props) {
   const { departments } = useDepartments(tenantId);
   const { macros, addMacro, removeMacro } = useMacros(tenantId);
   const statusCfg = STATUS_OPTIONS.find((s) => s.value === conversation.status);
+  const isAutoResolved = conversation.status === "auto-resolved";
+  const effectiveReadOnly = readOnly || isAutoResolved;
 
   // Departments for dropdown
 
@@ -175,6 +183,10 @@ export default function TicketDetailPanel({
               >
                 Auto-Resolved
               </Badge>
+            ) : effectiveReadOnly ? (
+              <Badge mt={1} fontSize="11px" colorScheme={statusCfg?.color || "gray"} variant="subtle">
+                {statusCfg?.label || conversation.status}
+              </Badge>
             ) : (
               <Select
                 size="xs"
@@ -195,20 +207,26 @@ export default function TicketDetailPanel({
           {/* Department */}
           <Box>
             <FieldLabel>Department</FieldLabel>
-            <Select
-              size="xs"
-              mt={1}
-              value={departments.find((d) => d.name === conversation.department)?.id || ""}
-              onChange={(e) => onDepartmentChange(conversation.id, e.target.value)}
-              bg="gray.50"
-              borderColor="gray.200"
-              fontSize="12px"
-              placeholder="Unassigned"
-            >
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </Select>
+            {effectiveReadOnly || !canAssign ? (
+              <Text fontSize="12px" color="gray.700" mt={1}>
+                {conversation.department || "Unassigned"}
+              </Text>
+            ) : (
+              <Select
+                size="xs"
+                mt={1}
+                value={departments.find((d) => d.name === conversation.department)?.id || ""}
+                onChange={(e) => onDepartmentChange(conversation.id, e.target.value)}
+                bg="gray.50"
+                borderColor="gray.200"
+                fontSize="12px"
+                placeholder="Unassigned"
+              >
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </Select>
+            )}
           </Box>
 
           {/* Auto-routed departments */}
@@ -243,34 +261,46 @@ export default function TicketDetailPanel({
           {/* Assignee */}
           <Box>
             <FieldLabel>Assignee</FieldLabel>
-            <Input
-              size="xs"
-              mt={1}
-              value={conversation.assignedTo || ""}
-              onChange={(e) => onAssigneeChange(conversation.id, e.target.value)}
-              bg="gray.50"
-              borderColor="gray.200"
-              fontSize="12px"
-              placeholder="Unassigned"
-            />
+            {effectiveReadOnly || !canAssign ? (
+              <Text fontSize="12px" color="gray.700" mt={1}>
+                {conversation.assignedTo || "Unassigned"}
+              </Text>
+            ) : (
+              <Input
+                size="xs"
+                mt={1}
+                value={conversation.assignedTo || ""}
+                onChange={(e) => onAssigneeChange(conversation.id, e.target.value)}
+                bg="gray.50"
+                borderColor="gray.200"
+                fontSize="12px"
+                placeholder="Unassigned"
+              />
+            )}
           </Box>
 
           {/* Priority */}
           <Box>
             <FieldLabel>Priority</FieldLabel>
-            <Select
-              size="xs"
-              mt={1}
-              value={conversation.priority || "normal"}
-              onChange={(e) => onPriorityChange(conversation.id, e.target.value)}
-              bg="gray.50"
-              borderColor="gray.200"
-              fontSize="12px"
-            >
-              {PRIORITY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </Select>
+            {effectiveReadOnly ? (
+              <Badge mt={1} fontSize="11px" colorScheme={PRIORITY_OPTIONS.find((p) => p.value === (conversation.priority || "normal"))?.color || "gray"} variant="subtle">
+                {PRIORITY_OPTIONS.find((p) => p.value === (conversation.priority || "normal"))?.label || "Normal"}
+              </Badge>
+            ) : (
+              <Select
+                size="xs"
+                mt={1}
+                value={conversation.priority || "normal"}
+                onChange={(e) => onPriorityChange(conversation.id, e.target.value)}
+                bg="gray.50"
+                borderColor="gray.200"
+                fontSize="12px"
+              >
+                {PRIORITY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </Select>
+            )}
           </Box>
 
           {/* Intent */}
@@ -397,84 +427,88 @@ export default function TicketDetailPanel({
                     </Text>
                   </Box>
                 ))}
-                <Textarea
-                  size="xs"
-                  placeholder="Add a note..."
-                  value={noteText}
-                  onChange={(e) => setNoteText(e.target.value)}
-                  fontSize="11px"
-                  rows={2}
-                  resize="none"
-                />
-                <HStack spacing={1}>
-                  <Button size="xs" colorScheme="yellow" variant="ghost" onClick={handleAddNote} isDisabled={!noteText.trim()} flex={1}>
-                    Add Note
-                  </Button>
-                  {/* Macros for notes */}
-                  <Popover placement="top-end">
-                    <PopoverTrigger>
-                      <IconButton
-                        aria-label="Macros"
-                        icon={<Icon as={FiZap} boxSize={3} />}
-                        size="xs"
-                        variant="ghost"
-                        color="gray.500"
-                      />
-                    </PopoverTrigger>
-                    <PopoverContent w="280px">
-                      <PopoverBody p={2}>
-                        <HStack justify="space-between" mb={2}>
-                          <Text fontSize="xs" fontWeight="600" color="gray.600">Macros</Text>
-                          <Button size="xs" variant="ghost" leftIcon={<Icon as={showMacroManager ? FiMessageSquare : FiPlus} boxSize={3} />} onClick={() => setShowMacroManager(!showMacroManager)}>
-                            {showMacroManager ? "List" : "New"}
-                          </Button>
-                        </HStack>
-                        {showMacroManager ? (
-                          <VStack spacing={2} align="stretch">
-                            <Input size="xs" placeholder="Title" value={newMacroTitle} onChange={(e) => setNewMacroTitle(e.target.value)} fontSize="xs" />
-                            <Textarea size="xs" placeholder="Note content..." value={newMacroContent} onChange={(e) => setNewMacroContent(e.target.value)} fontSize="xs" rows={3} resize="none" />
-                            <Button size="xs" colorScheme="blue" onClick={handleAddMacro} isDisabled={!newMacroTitle.trim() || !newMacroContent.trim()}>
-                              Save Macro
-                            </Button>
-                          </VStack>
-                        ) : macros.length === 0 ? (
-                          <Text fontSize="xs" color="gray.400" textAlign="center" py={3}>
-                            No macros yet
-                          </Text>
-                        ) : (
-                          <VStack spacing={1} align="stretch" maxH="200px" overflowY="auto">
-                            {macros.map((m) => (
-                              <HStack
-                                key={m.id}
-                                px={2}
-                                py={1.5}
-                                borderRadius="md"
-                                cursor="pointer"
-                                _hover={{ bg: "gray.50" }}
-                                onClick={() => setNoteText(m.content)}
-                                justify="space-between"
-                              >
-                                <Box>
-                                  <Text fontSize="xs" fontWeight="500" color="gray.700">{m.title}</Text>
-                                  <Text fontSize="10px" color="gray.400" noOfLines={1}>{m.content}</Text>
-                                </Box>
-                                <IconButton
-                                  aria-label="Delete macro"
-                                  icon={<Icon as={FiTrash2} boxSize={3} />}
-                                  size="xs"
-                                  variant="ghost"
-                                  color="gray.300"
-                                  _hover={{ color: "red.500" }}
-                                  onClick={(e) => { e.stopPropagation(); removeMacro(m.id); }}
-                                />
-                              </HStack>
-                            ))}
-                          </VStack>
-                        )}
-                      </PopoverBody>
-                    </PopoverContent>
-                  </Popover>
-                </HStack>
+                {!readOnly && (
+                  <>
+                    <Textarea
+                      size="xs"
+                      placeholder="Add a note..."
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      fontSize="11px"
+                      rows={2}
+                      resize="none"
+                    />
+                    <HStack spacing={1}>
+                      <Button size="xs" colorScheme="yellow" variant="ghost" onClick={handleAddNote} isDisabled={!noteText.trim()} flex={1}>
+                        Add Note
+                      </Button>
+                      {/* Macros for notes */}
+                      <Popover placement="top-end">
+                        <PopoverTrigger>
+                          <IconButton
+                            aria-label="Macros"
+                            icon={<Icon as={FiZap} boxSize={3} />}
+                            size="xs"
+                            variant="ghost"
+                            color="gray.500"
+                          />
+                        </PopoverTrigger>
+                        <PopoverContent w="280px">
+                          <PopoverBody p={2}>
+                            <HStack justify="space-between" mb={2}>
+                              <Text fontSize="xs" fontWeight="600" color="gray.600">Macros</Text>
+                              <Button size="xs" variant="ghost" leftIcon={<Icon as={showMacroManager ? FiMessageSquare : FiPlus} boxSize={3} />} onClick={() => setShowMacroManager(!showMacroManager)}>
+                                {showMacroManager ? "List" : "New"}
+                              </Button>
+                            </HStack>
+                            {showMacroManager ? (
+                              <VStack spacing={2} align="stretch">
+                                <Input size="xs" placeholder="Title" value={newMacroTitle} onChange={(e) => setNewMacroTitle(e.target.value)} fontSize="xs" />
+                                <Textarea size="xs" placeholder="Note content..." value={newMacroContent} onChange={(e) => setNewMacroContent(e.target.value)} fontSize="xs" rows={3} resize="none" />
+                                <Button size="xs" colorScheme="blue" onClick={handleAddMacro} isDisabled={!newMacroTitle.trim() || !newMacroContent.trim()}>
+                                  Save Macro
+                                </Button>
+                              </VStack>
+                            ) : macros.length === 0 ? (
+                              <Text fontSize="xs" color="gray.400" textAlign="center" py={3}>
+                                No macros yet
+                              </Text>
+                            ) : (
+                              <VStack spacing={1} align="stretch" maxH="200px" overflowY="auto">
+                                {macros.map((m) => (
+                                  <HStack
+                                    key={m.id}
+                                    px={2}
+                                    py={1.5}
+                                    borderRadius="md"
+                                    cursor="pointer"
+                                    _hover={{ bg: "gray.50" }}
+                                    onClick={() => setNoteText(m.content)}
+                                    justify="space-between"
+                                  >
+                                    <Box>
+                                      <Text fontSize="xs" fontWeight="500" color="gray.700">{m.title}</Text>
+                                      <Text fontSize="10px" color="gray.400" noOfLines={1}>{m.content}</Text>
+                                    </Box>
+                                    <IconButton
+                                      aria-label="Delete macro"
+                                      icon={<Icon as={FiTrash2} boxSize={3} />}
+                                      size="xs"
+                                      variant="ghost"
+                                      color="gray.300"
+                                      _hover={{ color: "red.500" }}
+                                      onClick={(e) => { e.stopPropagation(); removeMacro(m.id); }}
+                                    />
+                                  </HStack>
+                                ))}
+                              </VStack>
+                            )}
+                          </PopoverBody>
+                        </PopoverContent>
+                      </Popover>
+                    </HStack>
+                  </>
+                )}
               </VStack>
             )}
           </Box>

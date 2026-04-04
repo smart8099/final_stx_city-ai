@@ -60,6 +60,8 @@ interface Props {
   onSelectionChange: (ids: string[]) => void;
   onBulkStatusChange: (ids: string[], status: string) => void;
   onBulkPriorityChange: (ids: string[], priority: string) => void;
+  /** When true, hide checkboxes and bulk actions (member role). */
+  readOnly?: boolean;
 }
 
 export default function TicketTable({
@@ -75,6 +77,7 @@ export default function TicketTable({
   onBulkStatusChange,
   onBulkPriorityChange,
   fetchedAt,
+  readOnly = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [ticketsPerPage, setTicketsPerPage] = useState(20);
@@ -167,7 +170,7 @@ export default function TicketTable({
       </Box>
 
       {/* Bulk Action Bar */}
-      {selectedIds.length > 0 && (
+      {!readOnly && selectedIds.length > 0 && (
         <Flex px={4} py={1.5} bg="blue.50" borderBottom="1px solid" borderColor="blue.100" align="center" gap={3}>
           <Text fontSize="xs" fontWeight="600" color="blue.700">
             {selectedIds.length} selected
@@ -218,14 +221,16 @@ export default function TicketTable({
           <Table size="sm" variant="simple">
             <Thead>
               <Tr>
-                <Th py={2} px={3} w="32px">
-                  <Checkbox
-                    size="sm"
-                    isChecked={allPageSelected}
-                    onChange={handleSelectAll}
-                    colorScheme="blue"
-                  />
-                </Th>
+                {!readOnly && (
+                  <Th py={2} px={3} w="32px">
+                    <Checkbox
+                      size="sm"
+                      isChecked={allPageSelected}
+                      onChange={handleSelectAll}
+                      colorScheme="blue"
+                    />
+                  </Th>
+                )}
                 <Th fontSize="11px" color="gray.500" fontWeight="600" textTransform="uppercase" letterSpacing="wider" py={2} px={3} w="80px">
                   Status
                 </Th>
@@ -276,14 +281,16 @@ export default function TicketTable({
                     borderLeft="3px solid"
                     borderLeftColor={isSelected ? "blue.500" : "transparent"}
                   >
-                    <Td py={1} px={3} borderBottom="1px solid" borderColor="gray.100" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        size="sm"
-                        isChecked={isChecked}
-                        onChange={() => handleSelectOne(conv.id)}
-                        colorScheme="blue"
-                      />
-                    </Td>
+                    {!readOnly && (
+                      <Td py={1} px={3} borderBottom="1px solid" borderColor="gray.100" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          size="sm"
+                          isChecked={isChecked}
+                          onChange={() => handleSelectOne(conv.id)}
+                          colorScheme="blue"
+                        />
+                      </Td>
+                    )}
                     <Td py={1} px={3} borderBottom="1px solid" borderColor="gray.100">
                       <Badge
                         colorScheme={cfg.color}

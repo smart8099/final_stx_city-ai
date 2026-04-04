@@ -19,6 +19,7 @@ const TenantCreateInput = z.object({
   slug: z.string().min(1).max(100),
   websiteDomain: z.string().min(1).max(255),
   searchDomains: z.array(z.string()).optional(),
+  location: z.string().max(255).optional(),
 });
 
 const TenantUpdateInput = z.object({
@@ -62,6 +63,7 @@ export const tenantsRouter = router({
         name: tenant.name,
         websiteDomain: tenant.websiteDomain,
         apiKey: tenant.apiKey,
+        location: tenant.location,
       };
     }),
 
@@ -77,6 +79,7 @@ export const tenantsRouter = router({
           name: existing.name,
           websiteDomain: existing.websiteDomain,
           apiKey: existing.apiKey,
+          location: existing.location,
         };
       }
 
@@ -95,7 +98,25 @@ export const tenantsRouter = router({
         name: tenant.name,
         websiteDomain: tenant.websiteDomain,
         apiKey: tenant.apiKey,
+        location: tenant.location,
       };
+    }),
+
+  /** Sets location + coordinates for a tenant during onboarding. */
+  setLocation: adminProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        location: z.string().min(1).max(255),
+        latitude: z.number().min(-90).max(90),
+        longitude: z.number().min(-180).max(180),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input;
+      const updated = await updateTenant(ctx.db, ctx.redis, id, data);
+      if (!updated) throw new Error("Tenant not found");
+      return { location: updated.location, latitude: updated.latitude, longitude: updated.longitude };
     }),
 
   update: adminProcedure.input(TenantUpdateInput).mutation(async ({ ctx, input }) => {

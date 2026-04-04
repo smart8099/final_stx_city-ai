@@ -12,6 +12,7 @@ import {
   FiClock,
   FiUser,
   FiBell,
+  FiZap,
 } from "react-icons/fi";
 import { useUser } from "@clerk/nextjs";
 import { Conversation } from "@/lib/types";
@@ -25,6 +26,8 @@ interface Props {
   recentlyViewedIds: string[];
   onViewChange: (view: ViewFilter) => void;
   tenantId: string | null;
+  /** When true, hides the Unassigned department filter. */
+  isStaff?: boolean;
 }
 
 const STATUS_VIEWS: { key: string; label: string; icon: typeof FiInbox; color: string }[] = [
@@ -33,6 +36,7 @@ const STATUS_VIEWS: { key: string; label: string; icon: typeof FiInbox; color: s
   { key: "open", label: "Open", icon: FiMessageSquare, color: "green.500" },
   { key: "escalated", label: "Escalated", icon: FiAlertTriangle, color: "red.500" },
   { key: "resolved", label: "Solved", icon: FiCheckCircle, color: "gray.400" },
+  { key: "auto-resolved", label: "Auto-Resolved", icon: FiZap, color: "teal.500" },
 ];
 
 const QUICK_VIEWS: { key: string; label: string; icon: typeof FiClock; color: string }[] = [
@@ -91,7 +95,7 @@ function SidebarItem({
   );
 }
 
-export default function TicketSidebar({ conversations, activeView, recentlyViewedIds, onViewChange, tenantId }: Props) {
+export default function TicketSidebar({ conversations, activeView, recentlyViewedIds, onViewChange, tenantId, isStaff }: Props) {
   const { departments } = useDepartments(tenantId);
   const { user } = useUser();
   const myName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
@@ -177,14 +181,16 @@ export default function TicketSidebar({ conversations, activeView, recentlyViewe
         Departments
       </Text>
       <VStack spacing={0} align="stretch">
-        <SidebarItem
-          isActive={activeView === "dept:unassigned"}
-          icon={FiMinusCircle}
-          label="Unassigned"
-          count={conversations.filter((c) => !c.department).length}
-          color="gray.400"
-          onClick={() => onViewChange("dept:unassigned")}
-        />
+        {!isStaff && (
+          <SidebarItem
+            isActive={activeView === "dept:unassigned"}
+            icon={FiMinusCircle}
+            label="Unassigned"
+            count={conversations.filter((c) => !c.department).length}
+            color="gray.400"
+            onClick={() => onViewChange("dept:unassigned")}
+          />
+        )}
         {departments.map((dept) => (
           <SidebarItem
             key={dept.id}

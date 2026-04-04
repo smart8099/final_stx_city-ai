@@ -64,7 +64,7 @@ interface WSFrame {
 }
 
 /** Fixed interval used for all inactivity stages (ms). */
-const TIMER_MS = 120_000;
+const TIMER_MS = 90_000;
 
 async function handleWebSocket(ws: WebSocket) {
   const redis = getRedis();
@@ -250,6 +250,10 @@ async function handleWebSocket(ws: WebSocket) {
       const name = ((frame.name as string) ?? "").trim();
       const phone = ((frame.phone as string) ?? "").trim();
       const emailRaw = ((frame.email as string) ?? "").trim();
+      if (!name || !phone) {
+        ws.send(JSON.stringify({ type: "error", content: "Name and phone number are required." }));
+        return;
+      }
       const contact = { name, phone, ...(emailRaw ? { email: emailRaw } : {}) };
       if (currentConvId && env.PERSIST_CHAT_MESSAGES) {
         try {

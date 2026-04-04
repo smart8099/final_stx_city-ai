@@ -14,6 +14,7 @@ import {
   invalidateDeptCache,
   clearAllTenantCaches,
 } from "./cache_service";
+import { geocodeCity } from "./geocode_service";
 
 /**
  * Generates a cryptographically random 64-character hex API key.
@@ -38,8 +39,13 @@ export async function createTenant(
     slug: string;
     websiteDomain: string;
     searchDomains?: string[];
+    location?: string;
   },
 ): Promise<Tenant> {
+  // Auto-geocode from location field, falling back to name
+  const searchTerm = data.location || data.name;
+  const coords = await geocodeCity(searchTerm, data.websiteDomain);
+
   const [tenant] = await db
     .insert(tenants)
     .values({
@@ -48,7 +54,10 @@ export async function createTenant(
       apiKey: generateApiKey(),
       websiteDomain: data.websiteDomain,
       searchDomains: data.searchDomains ?? [],
+      location: data.location ?? null,
       isActive: true,
+      latitude: coords?.latitude ?? null,
+      longitude: coords?.longitude ?? null,
     })
     .returning();
   return tenant!;
@@ -97,11 +106,23 @@ export async function updateTenant(
       | "isActive"
       | "dailyRequestQuota"
       | "llmApiKey"
+      | "location"
+      | "latitude"
+      | "longitude"
     >
   >,
 ): Promise<Tenant | null> {
   const existing = await getTenantById(db, id);
   if (!existing) return null;
+
+  // Auto-geocode if location changed and no explicit coordinates provided
+  if (data.location && data.location !== existing.location && data.latitude === undefined && data.longitude === undefined) {
+    const coords = await geocodeCity(data.location);
+    if (coords) {
+      data.latitude = coords.latitude;
+      data.longitude = coords.longitude;
+    }
+  }
 
   const [updated] = await db
     .update(tenants)

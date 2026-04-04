@@ -16,6 +16,8 @@ import { conversationsAdminRouter } from "./routers/conversationsAdmin";
 import { settingsRouter } from "./routers/settings";
 import { healthRouter } from "./routers/health";
 import { macrosRouter } from "./routers/macros";
+import { adminRouter } from "./routers/admin";
+import { meRouter } from "./routers/me";
 
 export const appRouter = router({
   chat: chatRouter,
@@ -26,6 +28,8 @@ export const appRouter = router({
   settings: settingsRouter,
   macros: macrosRouter,
   health: healthRouter,
+  admin: adminRouter,
+  me: meRouter,
 });
 
 export type AppRouter = typeof appRouter;

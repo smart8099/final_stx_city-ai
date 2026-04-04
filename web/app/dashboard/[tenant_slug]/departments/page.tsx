@@ -25,6 +25,7 @@ import {
   FiEdit2,
   FiX,
   FiCheck,
+  FiClock,
 } from "react-icons/fi";
 import { trpc } from "@/lib/trpc";
 import { useTenant } from "@/lib/use-tenant";
@@ -50,7 +51,7 @@ export default function DepartmentsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newKeyword, setNewKeyword] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newDept, setNewDept] = useState({ name: "", email: "", phone: "" });
+  const [newDept, setNewDept] = useState({ name: "", email: "", phone: "", hours: "" });
   const [errors, setErrors] = useState<{ name?: string; email?: string; phone?: string }>({});
   const [editErrors, setEditErrors] = useState<{ email?: string; phone?: string }>({});
 
@@ -89,9 +90,10 @@ export default function DepartmentsPage() {
       name: newDept.name.trim(),
       email: newDept.email.trim(),
       phone: newDept.phone.trim(),
+      hours: newDept.hours.trim() || null,
       keywords: [],
     });
-    setNewDept({ name: "", email: "", phone: "" });
+    setNewDept({ name: "", email: "", phone: "", hours: "" });
     setErrors({});
     setShowAddForm(false);
   };
@@ -135,9 +137,9 @@ export default function DepartmentsPage() {
     });
   };
 
-  const handleUpdateField = (deptId: string, field: "email" | "phone", value: string) => {
+  const handleUpdateField = (deptId: string, field: "email" | "phone" | "hours", value: string) => {
     if (!tenantId) return;
-    updateMut.mutate({ tenantId, deptId, [field]: value });
+    updateMut.mutate({ tenantId, deptId, [field]: value || null });
   };
 
   if (!tenantId) {
@@ -208,6 +210,12 @@ export default function DepartmentsPage() {
                 </Box>
               </HStack>
             </Box>
+            <Input
+              size="sm"
+              placeholder="Business hours (e.g. Mon – Fri: 8 AM – 5 PM)"
+              value={newDept.hours}
+              onChange={(e) => setNewDept({ ...newDept, hours: e.target.value })}
+            />
             <HStack justify="flex-end">
               <Button size="sm" variant="ghost" onClick={() => { setShowAddForm(false); setErrors({}); }}>Cancel</Button>
               <Button size="sm" colorScheme="blue" onClick={handleAdd} isLoading={createMut.isPending}>Create</Button>
@@ -253,7 +261,7 @@ export default function DepartmentsPage() {
                   </Flex>
                   <Box>
                     <Text fontWeight="600" fontSize="sm" color="gray.800">{dept.name}</Text>
-                    <HStack spacing={3} fontSize="xs" color="gray.400">
+                    <HStack spacing={3} fontSize="xs" color="gray.400" flexWrap="wrap">
                       <HStack spacing={1}>
                         <Icon as={FiMail} boxSize={3} />
                         <Text>{dept.email || "—"}</Text>
@@ -261,6 +269,10 @@ export default function DepartmentsPage() {
                       <HStack spacing={1}>
                         <Icon as={FiPhone} boxSize={3} />
                         <Text>{dept.phone || "—"}</Text>
+                      </HStack>
+                      <HStack spacing={1}>
+                        <Icon as={FiClock} boxSize={3} />
+                        <Text>{dept.hours || "—"}</Text>
                       </HStack>
                     </HStack>
                   </Box>
@@ -370,6 +382,12 @@ export default function DepartmentsPage() {
                         {editErrors.phone && <Text fontSize="xs" color="red.500" mt={1}>{editErrors.phone}</Text>}
                       </Box>
                     </HStack>
+                    <Input
+                      size="sm"
+                      placeholder="Business hours (e.g. Mon – Fri: 8 AM – 5 PM)"
+                      defaultValue={dept.hours ?? ""}
+                      onBlur={(e) => handleUpdateField(dept.id, "hours", e.target.value)}
+                    />
                   </VStack>
                 </Box>
               )}
