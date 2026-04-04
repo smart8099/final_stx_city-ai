@@ -1,3 +1,8 @@
+/**
+ * Dashboard layout — sidebar with navigation, tenant info from DB, and user button.
+ *
+ * No Clerk organization switcher — tenants are managed via our RBAC system.
+ */
 "use client";
 
 import {
@@ -8,13 +13,13 @@ import {
   Icon,
   Link as ChakraLink,
   HStack,
+  Spinner,
 } from "@chakra-ui/react";
 import {
   SignedIn,
   SignedOut,
   UserButton,
   SignInButton,
-  OrganizationSwitcher,
 } from "@clerk/nextjs";
 import { useAuth } from "@clerk/nextjs";
 import NextLink from "next/link";
@@ -26,15 +31,18 @@ import {
   FiMessageSquare,
   FiBarChart2,
   FiSettings,
+  FiShield,
 } from "react-icons/fi";
-
+import { trpc } from "@/lib/trpc";
+import { useTenant } from "@/lib/use-tenant";
+import { useRole } from "@/lib/use-role";
 
 const NAV_ITEMS = [
-  { label: "Knowledge Base", href: "/knowledge-base", icon: FiBook },
-  { label: "Departments", href: "/departments", icon: FiUsers },
-  { label: "Conversations", href: "/conversations", icon: FiMessageSquare },
-  { label: "Analytics", href: "/analytics", icon: FiBarChart2 },
-  { label: "Settings", href: "/settings", icon: FiSettings },
+  { label: "Knowledge Base", href: "/knowledge-base", icon: FiBook, adminOnly: true },
+  { label: "Departments", href: "/departments", icon: FiUsers, adminOnly: true },
+  { label: "Conversations", href: "/conversations", icon: FiMessageSquare, adminOnly: false },
+  { label: "Analytics", href: "/analytics", icon: FiBarChart2, adminOnly: true },
+  { label: "Settings", href: "/settings", icon: FiSettings, adminOnly: true },
 ];
 
 export default function DashboardLayout({
@@ -45,23 +53,45 @@ export default function DashboardLayout({
   const params = useParams();
   const pathname = usePathname();
   const router = useRouter();
-  const { orgSlug, orgRole, isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth();
   const slug = params.tenant_slug as string;
-  const roleLabel = orgRole === "org:admin" || orgRole === "org:organization_city_admin" ? "Organization/City Admin" : orgRole === "org:tech_admin" ? "Tech Admin" : orgRole ? "Member" : "";
+  const { tenant } = useTenant();
+  const { role, isTechAdmin, isCityAdmin } = useRole();
+  const { data: memberships, isLoading: membershipsLoading } = trpc.me.memberships.useQuery(
+    undefined,
+    { enabled: isLoaded && !!isSignedIn },
+  );
+
+  const roleLabel = role
+    ? role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : "";
+
   const basePath = `/dashboard/${slug}`;
 
-  // Redirect if org changes or slug doesn't match
+  // Redirect if not signed in or no active membership for this tenant
   useEffect(() => {
     if (!isLoaded) return;
     if (!isSignedIn) {
       router.replace("/");
       return;
     }
-    if (orgSlug && slug !== orgSlug) {
-      const newPath = pathname.replace(`/dashboard/${slug}`, `/dashboard/${orgSlug}`);
-      router.replace(newPath);
+    if (membershipsLoading || !memberships) return;
+    const hasAccess = memberships.some(
+      (m) => m.tenantSlug === slug || m.tenantId === null,
+    );
+    if (!hasAccess) {
+      router.replace("/");
     }
-  }, [isLoaded, isSignedIn, orgSlug, slug, pathname, router]);
+  }, [isLoaded, isSignedIn, memberships, membershipsLoading, slug, router]);
+
+  // Show loading while checking access
+  if (!isLoaded || membershipsLoading) {
+    return (
+      <Flex h="100vh" align="center" justify="center">
+        <Spinner color="blue.500" />
+      </Flex>
+    );
+  }
 
   return (
     <Flex h="100vh" overflow="hidden">
@@ -74,48 +104,22 @@ export default function DashboardLayout({
         display="flex"
         flexDirection="column"
       >
-        {/* Logo + Org */}
+        {/* Logo + Tenant */}
         <Box px={5} py={5} borderBottom="1px solid" borderColor="gray.700">
           <Text fontSize="xl" fontWeight="bold" color="blue.300" mb={2}>
             CityAssist
           </Text>
           <SignedIn>
-            <Text fontSize="xs" color="gray.500" mt={1}>
-              Organization
-            </Text>
-            <OrganizationSwitcher
-              hidePersonal
-              hideSlug
-              createOrganizationMode="navigation"
-              createOrganizationUrl="/disabled"
-              organizationProfileMode="modal"
-              appearance={{
-                elements: {
-                  rootBox: { width: "100%" },
-                  organizationSwitcherTrigger: {
-                    color: "#a0aec0",
-                    fontSize: "12px",
-                    padding: "4px 0",
-                  },
-                  organizationSwitcherPopoverActionButton__createOrganization: {
-                    display: "none",
-                  },
-                  organizationSwitcherPopoverActionButton__manageOrganization: {
-                    display: orgRole === "org:admin" || orgRole === "org:organization_city_admin" ? "flex" : "none",
-                  },
-                  organizationSwitcherTriggerIcon: {
-                    display: "none",
-                  },
-                  organizationPreviewMainIdentifier: {
-                    fontSize: "13px",
-                    fontWeight: "600",
-                  },
-                  organizationPreviewSecondaryIdentifier: {
-                    display: "none",
-                  },
-                },
-              }}
-            />
+            {tenant && (
+              <>
+                <Text fontSize="xs" color="gray.500">
+                  City
+                </Text>
+                <Text fontSize="13px" fontWeight="600" color="gray.200">
+                  {tenant.name}
+                </Text>
+              </>
+            )}
             {roleLabel && (
               <Text fontSize="11px" color="gray.400" mt={0.5}>
                 {roleLabel}
@@ -131,7 +135,7 @@ export default function DashboardLayout({
 
         {/* Nav Links */}
         <VStack spacing={1} align="stretch" px={3} py={4} flex={1}>
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter((item) => !item.adminOnly || isTechAdmin || isCityAdmin).map((item) => {
             const fullPath = `${basePath}${item.href}`;
             const isActive = pathname.startsWith(fullPath);
             return (
@@ -163,31 +167,47 @@ export default function DashboardLayout({
           })}
         </VStack>
 
+        {/* Tech Admin Link */}
+        {isTechAdmin && (
+          <Box px={3} pb={2}>
+            <ChakraLink
+              as={NextLink}
+              href="/admin"
+              display="flex"
+              alignItems="center"
+              gap={2}
+              px={3}
+              py={2}
+              borderRadius="md"
+              fontSize="xs"
+              color="gray.400"
+              _hover={{ bg: "gray.800", color: "white", textDecoration: "none" }}
+              transition="all 0.15s"
+            >
+              <Icon as={FiShield} boxSize={3} />
+              Tech Dashboard
+            </ChakraLink>
+          </Box>
+        )}
+
         {/* User */}
         <Box px={5} py={4} borderTop="1px solid" borderColor="gray.700">
           <SignedIn>
             <HStack spacing={3}>
               <UserButton
                 afterSignOutUrl="/"
+                showName={false}
                 appearance={{
                   elements: {
                     avatarBox: { width: "28px", height: "28px" },
+                    ...(!isTechAdmin && {
+                      userButtonPopoverActionButton__manageAccount: {
+                        display: "none",
+                      },
+                    }),
                   },
                 }}
               />
-              {orgRole === "org:tech_admin" && (
-                <style>{`
-                  .cl-navbarButton__security,
-                  .cl-navbarButton__danger,
-                  .cl-profileSection__activeDevices,
-                  .cl-profileSection__danger,
-                  .cl-profilePage__security,
-                  [data-localization-key="userProfile.start.dangerSection.title"],
-                  [data-localization-key="userProfile.start.dangerSection.deleteAccountButton"] {
-                    display: none !important;
-                  }
-                `}</style>
-              )}
             </HStack>
           </SignedIn>
           <SignedOut>

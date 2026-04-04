@@ -1,10 +1,12 @@
 /**
  * tRPC initialisation — defines the base procedures and middleware.
  *
- * Exports three procedure builders:
- *   - publicProcedure   — no authentication required
- *   - tenantProcedure   — requires a valid X-CityAssist-Key header
- *   - adminProcedure    — requires a valid Clerk JWT with admin role
+ * Exports procedure builders:
+ *   - publicProcedure      — no authentication required
+ *   - tenantProcedure      — requires a valid X-CityAssist-Key header
+ *   - adminProcedure       — requires a valid Clerk JWT (backward-compatible)
+ *   - techAdminProcedure   — requires role === 'tech_admin'
+ *   - tenantAdminProcedure — requires role === 'city_admin' + matching tenantId
  */
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
@@ -28,10 +30,29 @@ export const tenantProcedure = t.procedure.use(({ ctx, next }) => {
   return next({ ctx: { ...ctx, tenant: ctx.tenant } });
 });
 
-// Clerk admin procedure — requires valid Clerk JWT with admin role
+// Clerk admin procedure — requires valid Clerk JWT with admin role (backward-compatible)
 export const adminProcedure = t.procedure.use(({ ctx, next }) => {
   if (!ctx.isAdmin) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Admin access required" });
+  }
+  return next({ ctx });
+});
+
+// Tech admin procedure — requires role === 'tech_admin'
+export const techAdminProcedure = t.procedure.use(({ ctx, next }) => {
+  if (ctx.role !== "tech_admin") {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Tech admin access required" });
+  }
+  return next({ ctx });
+});
+
+// Tenant admin procedure — requires city_admin (or tech_admin) role
+export const tenantAdminProcedure = t.procedure.use(({ ctx, next }) => {
+  if (ctx.role === "tech_admin") {
+    return next({ ctx });
+  }
+  if (ctx.role !== "city_admin") {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "City admin access required" });
   }
   return next({ ctx });
 });

@@ -6,7 +6,7 @@ Multi-tenant civic AI chatbot. Cities embed a widget that answers resident quest
 ## Monorepo Layout
 ```
 city_bot/
-  web/              Next.js 14 + tRPC backend + admin dashboard (TypeScript/pnpm)
+  web/              Next.js 16 + tRPC backend + admin dashboard (TypeScript/pnpm)
   widget/           Embeddable IIFE widget (Vite, TypeScript)
   docker-compose.yml  postgres:16 + redis:7-alpine
 ```

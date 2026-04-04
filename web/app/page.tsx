@@ -1,3 +1,12 @@
+/**
+ * Landing page — handles sign in/up and routes users to the correct dashboard.
+ *
+ * After Clerk sign-in, calls me.sync which:
+ * - Creates user record in DB if new
+ * - Auto-provisions tech_admin if email matches ADMIN_EMAIL
+ * - Auto-accepts pending invitations
+ * - Returns the redirect destination
+ */
 "use client";
 
 import {
@@ -7,10 +16,9 @@ import {
   SignedOut,
   useAuth,
   useUser,
-  useOrganizationList,
 } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   Box,
   Flex,
@@ -22,41 +30,63 @@ import {
   Spinner,
 } from "@chakra-ui/react";
 import { FiArrowRight, FiShield, FiClock } from "react-icons/fi";
+import { trpc } from "@/lib/trpc";
 
 export default function Home() {
-  const { isSignedIn, isLoaded, orgSlug, orgId } = useAuth();
+  const { isSignedIn, isLoaded } = useAuth();
   const { user } = useUser();
   const router = useRouter();
-  const { userMemberships, setActive } = useOrganizationList({
-    userMemberships: { infinite: true },
+  const [synced, setSynced] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+
+  const syncMutation = trpc.me.sync.useMutation({
+    onSuccess: (result) => {
+      setSynced(true);
+      if (result.redirect === "/waiting") {
+        setWaiting(true);
+      } else {
+        router.push(result.redirect);
+      }
+    },
+    onError: () => {
+      setWaiting(true);
+    },
   });
 
-  // If signed in AND has an active org, go to dashboard
+  // Re-check memberships periodically when waiting
+  const { data: memberships } = trpc.me.memberships.useQuery(undefined, {
+    enabled: isLoaded && !!isSignedIn && waiting,
+    refetchInterval: 5000,
+  });
+
+  // Sync user after Clerk sign-in
   useEffect(() => {
-    if (isLoaded && isSignedIn && orgSlug) {
-      router.push(`/dashboard/${orgSlug}/conversations`);
+    if (!isLoaded || !isSignedIn || !user || synced || syncMutation.isPending) return;
+
+    const email = user.primaryEmailAddress?.emailAddress;
+    if (!email) return;
+
+    syncMutation.mutate({
+      email,
+      name: [user.firstName, user.lastName].filter(Boolean).join(" ") || null,
+    });
+  }, [isLoaded, isSignedIn, user, synced]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When waiting, check if memberships appeared (invitation accepted elsewhere)
+  useEffect(() => {
+    if (!waiting || !memberships || memberships.length === 0) return;
+
+    const techAdmin = memberships.find((m) => m.roleName === "tech_admin");
+    if (techAdmin) {
+      router.push("/admin");
+      return;
     }
-  }, [isLoaded, isSignedIn, orgSlug, router]);
 
-  // If signed in but no active org, auto-select the first org
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn || orgId) return;
-    if (!userMemberships?.data?.length) return;
-
-    const firstOrg = userMemberships.data[0].organization;
-    if (firstOrg && setActive) {
-      setActive({ organization: firstOrg.id });
+    const tenantMembership = memberships.find((m) => m.tenantSlug);
+    if (tenantMembership?.tenantSlug) {
+      router.push(`/dashboard/${tenantMembership.tenantSlug}/conversations`);
     }
-  }, [isLoaded, isSignedIn, orgId, userMemberships?.data, setActive]);
-
-  // Poll for new memberships when user has no org (invited user waiting)
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn || orgId) return;
-    const interval = setInterval(() => {
-      userMemberships?.revalidate?.();
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [isLoaded, isSignedIn, orgId, userMemberships]);
+  }, [waiting, memberships, router]);
 
   if (!isLoaded) {
     return (
@@ -66,8 +96,22 @@ export default function Home() {
     );
   }
 
-  // Signed in but no org — waiting screen
-  if (isSignedIn && !orgSlug) {
+  // Signed in, syncing...
+  if (isSignedIn && !waiting) {
+    return (
+      <Flex minH="100vh" bg="gray.50" align="center" justify="center">
+        <VStack spacing={3}>
+          <Spinner color="blue.500" />
+          <Text fontSize="sm" color="gray.500">
+            Setting up your account...
+          </Text>
+        </VStack>
+      </Flex>
+    );
+  }
+
+  // Signed in but no access — waiting screen
+  if (isSignedIn && waiting) {
     return (
       <Flex minH="100vh" bg="gray.50" align="center" justify="center">
         <VStack spacing={6} maxW="420px" textAlign="center" px={6}>
@@ -104,28 +148,25 @@ export default function Home() {
               <Icon as={FiClock} boxSize={6} color="blue.500" />
             </Flex>
             <Text fontSize="md" fontWeight="600" color="gray.800" mb={1}>
-              Waiting for access
+              Account created successfully
             </Text>
             <Text fontSize="xs" color="gray.500" lineHeight="1.5">
-              Your admin hasn&apos;t added you to an organization yet.
-              Once they invite you, you&apos;ll be redirected to the dashboard automatically.
+              Your account is not yet associated with any city.
+              A city administrator must send you an invitation before you can access the platform.
             </Text>
             <HStack justify="center" spacing={2} color="gray.400" mt={4}>
               <Spinner size="xs" color="blue.400" />
-              <Text fontSize="xs">Checking for invitations...</Text>
+              <Text fontSize="xs">Waiting for an invitation...</Text>
             </HStack>
           </Box>
 
           <Text fontSize="xs" color="gray.400">
-            Check your email for an invite link from your admin.
+            Check your email for an invite link from your city administrator.
           </Text>
         </VStack>
       </Flex>
     );
   }
-
-  // Signed in with org — will redirect (show nothing)
-  if (isSignedIn) return null;
 
   // Not signed in — landing page
   return (
@@ -158,7 +199,7 @@ export default function Home() {
             </SignInButton>
             <SignUpButton mode="modal">
               <Button w="100%" variant="outline" size="md">
-                Create Organization
+                Create Account
               </Button>
             </SignUpButton>
           </VStack>

@@ -18,6 +18,8 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <ClerkProvider
+          afterSignUpUrl="/"
+          afterSignInUrl="/"
           appearance={{
             layout: {
               socialButtonsPlacement: "bottom",
@@ -111,6 +113,15 @@ export default function RootLayout({
                 borderRadius: "4px",
               },
               userProfile__dangerSection: {
+                display: "none",
+              },
+              organizationSwitcherTrigger: {
+                display: "none",
+              },
+              organizationListCreateOrganizationActionButton: {
+                display: "none",
+              },
+              organizationProfilePage: {
                 display: "none",
               },
             },

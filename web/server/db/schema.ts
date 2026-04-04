@@ -6,6 +6,7 @@
  */
 import {
   boolean,
+  doublePrecision,
   integer,
   json,
   pgTable,
@@ -37,6 +38,9 @@ export const tenants = pgTable("tenants", {
   isActive: boolean("is_active").notNull().default(true),
   dailyRequestQuota: integer("daily_request_quota"),
   llmApiKey: varchar("llm_api_key", { length: 500 }),
+  location: varchar("location", { length: 255 }),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
   widgetSettings: json("widget_settings").$type<{
     cityName?: string;
     primaryColor?: string;
@@ -199,6 +203,61 @@ export const macros = pgTable("macros", {
   ...timestamps,
 });
 
+// ── Users (internal registry, linked to Clerk) ──────────────────────────────
+
+export const users = pgTable("users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  clerkId: text("clerk_id").notNull().unique(),
+  email: text("email").notNull(),
+  name: text("name"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ── Roles ────────────────────────────────────────────────────────────────────
+
+export const roles = pgTable("roles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  permissions: json("permissions").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ── Tenant Memberships ───────────────────────────────────────────────────────
+
+export const tenantMemberships = pgTable("tenant_memberships", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  roleId: uuid("role_id")
+    .notNull()
+    .references(() => roles.id),
+  departmentId: uuid("department_id").references(() => departments.id, { onDelete: "set null" }),
+  invitedBy: uuid("invited_by").references(() => users.id),
+  joinedAt: timestamp("joined_at", { withTimezone: true }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ── Invitations ──────────────────────────────────────────────────────────────
+
+export const invitations = pgTable("invitations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").notNull(),
+  tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  roleId: uuid("role_id")
+    .notNull()
+    .references(() => roles.id),
+  departmentId: uuid("department_id").references(() => departments.id, { onDelete: "set null" }),
+  token: text("token").notNull().unique(),
+  invitedBy: uuid("invited_by").references(() => users.id),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ── Relations ─────────────────────────────────────────────────────────────────
 
 export const tenantsRelations = relations(tenants, ({ many }) => ({
@@ -207,6 +266,9 @@ export const tenantsRelations = relations(tenants, ({ many }) => ({
   faqs: many(faqs),
   conversations: many(conversations),
   macros: many(macros),
+  memberships: many(tenantMemberships),
+  roles: many(roles),
+  invitations: many(invitations),
 }));
 
 export const departmentsRelations = relations(departments, ({ one, many }) => ({
@@ -262,6 +324,26 @@ export const macrosRelations = relations(macros, ({ one }) => ({
   tenant: one(tenants, { fields: [macros.tenantId], references: [tenants.id] }),
 }));
 
+export const usersRelations = relations(users, ({ many }) => ({
+  memberships: many(tenantMemberships),
+}));
+
+export const rolesRelations = relations(roles, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [roles.tenantId], references: [tenants.id] }),
+  memberships: many(tenantMemberships),
+}));
+
+export const tenantMembershipsRelations = relations(tenantMemberships, ({ one }) => ({
+  user: one(users, { fields: [tenantMemberships.userId], references: [users.id] }),
+  tenant: one(tenants, { fields: [tenantMemberships.tenantId], references: [tenants.id] }),
+  role: one(roles, { fields: [tenantMemberships.roleId], references: [roles.id] }),
+}));
+
+export const invitationsRelations = relations(invitations, ({ one }) => ({
+  tenant: one(tenants, { fields: [invitations.tenantId], references: [tenants.id] }),
+  role: one(roles, { fields: [invitations.roleId], references: [roles.id] }),
+}));
+
 // ── Inferred types ────────────────────────────────────────────────────────────
 
 export type Tenant = typeof tenants.$inferSelect;
@@ -280,5 +362,13 @@ export type InternalNote = typeof internalNotes.$inferSelect;
 export type NewInternalNote = typeof internalNotes.$inferInsert;
 export type MacroRow = typeof macros.$inferSelect;
 export type NewMacro = typeof macros.$inferInsert;
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+export type Role = typeof roles.$inferSelect;
+export type NewRole = typeof roles.$inferInsert;
+export type TenantMembership = typeof tenantMemberships.$inferSelect;
+export type NewTenantMembership = typeof tenantMemberships.$inferInsert;
+export type Invitation = typeof invitations.$inferSelect;
+export type NewInvitation = typeof invitations.$inferInsert;
 export type ConversationDepartment = typeof conversationDepartments.$inferSelect;
 export type NewConversationDepartment = typeof conversationDepartments.$inferInsert;

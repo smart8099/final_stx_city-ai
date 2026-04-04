@@ -23,7 +23,9 @@ import { FiDownload, FiSettings } from "react-icons/fi";
 import { useUser } from "@clerk/nextjs";
 import { trpc } from "@/lib/trpc";
 import { useTenant } from "@/lib/use-tenant";
+import { useRole } from "@/lib/use-role";
 import { Conversation, InternalNote, Message } from "@/lib/types";
+import { useDepartments } from "@/lib/department-store";
 import TicketSidebar, { ViewFilter } from "@/components/TicketSidebar";
 import TicketTable from "@/components/TicketTable";
 import TicketDetailPanel from "@/components/TicketDetailPanel";
@@ -32,6 +34,7 @@ export default function ConversationsPage() {
   const { tenantId, slug } = useTenant();
   const { user } = useUser();
   const myName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
+  const { canEdit, canAssign, canAdmin, isStaff, isMember, departmentId: userDepartmentId } = useRole();
 
   // Fetch conversations from DB
   const convsQuery = trpc.conversationsAdmin.list.useQuery(
@@ -101,6 +104,19 @@ export default function ConversationsPage() {
     }));
   }, [convsQuery.data]);
 
+  // For staff: look up their department name to filter conversations
+  const { departments } = useDepartments(tenantId);
+  const userDepartmentName = useMemo(() => {
+    if (!isStaff || !userDepartmentId) return null;
+    return departments.find((d) => d.id === userDepartmentId)?.name ?? null;
+  }, [isStaff, userDepartmentId, departments]);
+
+  // Staff only sees their department's tickets
+  const visibleConversations = useMemo(() => {
+    if (!isStaff || !userDepartmentName) return conversations;
+    return conversations.filter((c) => c.department === userDepartmentName);
+  }, [conversations, isStaff, userDepartmentName]);
+
   const [activeView, setActiveView] = useState<ViewFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -126,7 +142,7 @@ export default function ConversationsPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    const sorted = [...conversations].sort(
+    const sorted = [...visibleConversations].sort(
       (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
     );
 
@@ -156,10 +172,10 @@ export default function ConversationsPage() {
       );
     }
     return sorted;
-  }, [conversations, activeView, myName, recentlyViewedIds]);
+  }, [visibleConversations, activeView, myName, recentlyViewedIds]);
 
   const selectedConversation = selectedId
-    ? conversations.find((c) => c.id === selectedId) || null
+    ? visibleConversations.find((c) => c.id === selectedId) || null
     : null;
 
   const handleStatusChange = useCallback(
@@ -298,11 +314,12 @@ export default function ConversationsPage() {
   return (
     <Flex h="100vh" overflow="hidden">
       <TicketSidebar
-        conversations={conversations}
+        conversations={visibleConversations}
         activeView={activeView}
         recentlyViewedIds={recentlyViewedIds}
         onViewChange={setActiveView}
         tenantId={tenantId}
+        isStaff={isStaff}
       />
       {selectedConversation ? (
         <TicketDetailPanel
@@ -314,6 +331,8 @@ export default function ConversationsPage() {
           onAssigneeChange={handleAssigneeChange}
           onAddNote={handleAddNote}
           tenantId={tenantId}
+          readOnly={isMember}
+          canAssign={canAssign}
         />
       ) : (
         <Flex flex={1} direction="column" overflow="hidden">
@@ -326,7 +345,7 @@ export default function ConversationsPage() {
             gap={1}
             bg="white"
           >
-            <Popover placement="bottom-end">
+            {(canAdmin || canAssign) && <Popover placement="bottom-end">
               <PopoverTrigger>
                 <IconButton
                   aria-label="SLA Settings"
@@ -448,15 +467,15 @@ export default function ConversationsPage() {
                   </VStack>
                 </PopoverBody>
               </PopoverContent>
-            </Popover>
-            <IconButton
+            </Popover>}
+            {canAssign && <IconButton
               aria-label="Export CSV"
               icon={<Icon as={FiDownload} />}
               size="xs"
               variant="ghost"
               color="gray.500"
               onClick={handleExportCSV}
-            />
+            />}
           </Flex>
           <TicketTable
             conversations={filtered}
@@ -471,6 +490,7 @@ export default function ConversationsPage() {
             onSelectionChange={setSelectedIds}
             onBulkStatusChange={handleBulkStatusChange}
             onBulkPriorityChange={handleBulkPriorityChange}
+            readOnly={isMember}
           />
         </Flex>
       )}
