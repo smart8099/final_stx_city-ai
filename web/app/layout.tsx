@@ -20,7 +20,6 @@ export default function RootLayout({
         <ClerkProvider
           afterSignUpUrl="/"
           afterSignInUrl="/"
-          skipOrganizationScreen={true}
           appearance={{
             layout: {
               socialButtonsPlacement: "bottom",
