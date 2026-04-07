@@ -12,6 +12,7 @@ import {
   FiClock,
   FiUser,
   FiBell,
+  FiZap,
 } from "react-icons/fi";
 import { useUser } from "@clerk/nextjs";
 import { Conversation } from "@/lib/types";
@@ -35,6 +36,7 @@ const STATUS_VIEWS: { key: string; label: string; icon: typeof FiInbox; color: s
   { key: "open", label: "Open", icon: FiMessageSquare, color: "green.500" },
   { key: "escalated", label: "Escalated", icon: FiAlertTriangle, color: "red.500" },
   { key: "resolved", label: "Solved", icon: FiCheckCircle, color: "gray.400" },
+  { key: "auto-resolved", label: "Auto-Resolved", icon: FiZap, color: "teal.500" },
 ];
 
 const QUICK_VIEWS: { key: string; label: string; icon: typeof FiClock; color: string }[] = [

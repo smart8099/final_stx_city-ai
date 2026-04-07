@@ -268,22 +268,27 @@ export async function detectEscalation(
   });
 
   const systemPrompt = `You are an escalation classifier for a civic chatbot.
-Determine whether the assistant's response indicates the conversation should be
-escalated to a human staff member.
+Determine whether this conversation requires a human staff member to follow up
+with the resident directly (e.g. phone call or email from the city).
 
-Escalate if ANY of these are true:
-- The assistant explicitly tells the user to contact a department, call a number,
-  visit an office, or speak to a human agent.
-- The assistant cannot resolve the issue and defers to city staff.
-- The situation involves an emergency or urgent matter requiring immediate human action.
+Escalate ONLY if BOTH of these are true:
+- The user has explicitly expressed that their issue is NOT resolved or they are
+  dissatisfied with the answer they received.
+- The assistant was unable to provide a satisfactory resolution — either because
+  it lacks the necessary information, the issue is too complex, or the user has
+  repeated their dissatisfaction after already receiving an answer.
 
 Do NOT escalate for:
-- General informational answers the AI resolved fully.
-- Answers that mention department contact details only as supplemental context.
-- Greetings, clarifying questions, or off-topic deflections.
+- Questions the assistant answered fully, even if the answer includes department
+  contact details as supplemental context.
+- First-time expressions of frustration that the assistant has not yet attempted
+  to address.
+- Greetings, clarifying questions, off-topic messages, or successful Q&A exchanges.
+- Cases where the assistant provided step-by-step instructions or resolved the query.
 
-Return shouldEscalate: true only when there is clear evidence the AI is handing off
-to a human. When in doubt, return false.`;
+Return shouldEscalate: true only when there is clear evidence the resident needs
+a human to follow up because the AI could not resolve their concern.
+When in doubt, return false.`;
 
   const historyTranscript = formatHistory(history, 3);
   const humanPrompt = [

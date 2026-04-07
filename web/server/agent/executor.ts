@@ -138,34 +138,78 @@ export async function* streamAgent(
 
   const fullParts: string[] = [];
   const toolOutputs: string[] = [];
+  let llmCallCount = 0;
+  let tLlm = 0;
+  let tTool = 0;
 
   const stream = agent.streamEvents(input, { version: "v2" });
 
-  for await (const event of stream) {
-    if (event.event === "on_chat_model_start") {
-      const messages = event.data?.input?.messages as unknown[];
-      log.debug({ messages }, "LLM call started");
-    } else if (event.event === "on_chat_model_stream") {
-      const chunk = event.data?.chunk;
-      const token =
-        typeof chunk?.content === "string" ? chunk.content : "";
-      if (token) {
-        fullParts.push(token);
-        yield { type: "token", token };
+  try {
+    for await (const event of stream) {
+      if (event.event === "on_chat_model_start") {
+        llmCallCount++;
+        tLlm = Date.now();
+        const messages = event.data?.input?.messages as unknown[];
+        log.debug({ messages, llmCall: llmCallCount }, "LLM call started");
+      } else if (event.event === "on_chat_model_stream") {
+        const chunk = event.data?.chunk;
+        const token =
+          typeof chunk?.content === "string" ? chunk.content : "";
+        if (token) {
+          fullParts.push(token);
+          yield { type: "token", token };
+        }
+      } else if (event.event === "on_chat_model_end") {
+        const meta = (event.data?.output as { response_metadata?: { timing?: Record<string, number> } } | undefined)
+          ?.response_metadata;
+        log.info(
+          {
+            llmCall: llmCallCount,
+            llmDurationMs: Date.now() - tLlm,
+            groqTotalSec: meta?.timing?.total_time,
+            groqQueueSec: meta?.timing?.queue_time,
+            groqPromptSec: meta?.timing?.prompt_time,
+            groqCompletionSec: meta?.timing?.completion_time,
+          },
+          "LLM call completed",
+        );
+      } else if (event.event === "on_tool_start") {
+        tTool = Date.now();
+        log.info(
+          { tool: event.name, input: event.data?.input },
+          "Tool called",
+        );
+      } else if (event.event === "on_tool_end") {
+        const output = event.data?.output;
+        let raw: string;
+        if (typeof output === "string") {
+          raw = output;
+        } else {
+          // LangGraph wraps the tool return value in a ToolMessage — unwrap it
+          const content =
+            (output as Record<string, unknown>)?.content ??
+            ((output as Record<string, unknown>)?.kwargs as Record<string, unknown>)?.content;
+          raw = typeof content === "string" ? content : JSON.stringify(output);
+        }
+        log.info(
+          { tool: event.name, toolDurationMs: Date.now() - tTool, output: raw.slice(0, 500) },
+          "Tool completed",
+        );
+        if (output) toolOutputs.push(raw);
       }
-    } else if (event.event === "on_chat_model_end") {
-      log.debug({ output: event.data?.output }, "LLM call completed");
-    } else if (event.event === "on_tool_start") {
-      log.info(
-        { tool: event.name, input: event.data?.input },
-        "Tool called",
-      );
-    } else if (event.event === "on_tool_end") {
-      const output = event.data?.output;
-      const raw = typeof output === "string" ? output : JSON.stringify(output);
-      log.info({ tool: event.name, output: raw.slice(0, 500) }, "Tool completed");
-      if (output) toolOutputs.push(raw);
     }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Groq 400 "Failed to call a function" — model generated a malformed tool call.
+    // Yield a graceful fallback so the widget doesn't hang.
+    if (msg.includes("Failed to call a function") || msg.includes("failed_generation")) {
+      log.warn({ err: msg, durationMs: Date.now() - t0 }, "Malformed tool call from LLM — returning fallback");
+      const fallback = "I'm sorry, I had trouble processing that request. Could you try rephrasing your question?";
+      yield { type: "token", token: fallback };
+      yield { type: "done", answer: fallback, sources: [] };
+      return;
+    }
+    throw err;
   }
 
   const answer = stripInlineSource(fullParts.join(""));
@@ -181,8 +225,19 @@ export async function* streamAgent(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Strips artefacts that should never appear in the final answer text:
+ *   - "Source: ..." lines appended by some LLM outputs
+ *   - Raw `<function=...>{...}</function>` tool-call syntax leaked by smaller models
+ *
+ * @param answer - Raw answer string from the LLM.
+ * @returns Cleaned answer with artefacts removed.
+ */
 function stripInlineSource(answer: string): string {
-  return answer.replace(/\n*\bSource:\s*[^\n]+/gi, "").trim();
+  return answer
+    .replace(/\n*\bSource:\s*[^\n]+/gi, "")
+    .replace(/<function=[^>]+>\{[^}]*\}<\/function>/g, "")
+    .trim();
 }
 
 function extractSources(messages: BaseMessage[]): { title: string; url: string }[] {

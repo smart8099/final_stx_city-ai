@@ -163,7 +163,25 @@ export default function ConversationThread({ conversation, hideHeader }: Props) 
                     )}
                   </HStack>
 
-                  {msg.sources && msg.sources.length > 0 && (
+                  {msg.webSources && msg.webSources.length > 0 && (
+                    <VStack align="start" spacing={0.5} mt={2}>
+                      {msg.webSources.map((src, i) => (
+                        <Link
+                          key={i}
+                          href={src.url}
+                          isExternal
+                          fontSize="11px"
+                          color="blue.500"
+                          fontWeight="600"
+                          textDecoration="underline"
+                          display="block"
+                        >
+                          {src.title || src.url}
+                        </Link>
+                      ))}
+                    </VStack>
+                  )}
+                  {!msg.webSources && msg.sources && msg.sources.length > 0 && (
                     <VStack align="start" spacing={1} mt={2}>
                       {msg.sources.map((src, i) => (
                         <HStack key={i} spacing={1} fontSize="11px" color="gray.500">

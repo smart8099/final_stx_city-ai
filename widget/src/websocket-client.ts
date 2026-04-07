@@ -5,11 +5,17 @@
  * dispatch, message queueing before auth completes, and exponential-backoff
  * reconnection (max 6 attempts, up to 30 s delay).
  */
-import type { WSMessage } from './types';
+import type { WSMessage, WSClientMessage } from './types';
 
 export type TokenHandler = (token: string) => void;
 export type DoneHandler = (sources: { title: string; url: string }[]) => void;
 export type ErrorHandler = (message: string) => void;
+export type ResolutionCheckHandler = () => void;
+export type MoreQuestionsCheckHandler = () => void;
+export type SystemMessageHandler = (content: string) => void;
+export type EscalationOfferHandler = (department: { name: string; phone: string } | null) => void;
+export type ContactFormHandler = () => void;
+export type SessionClosedHandler = (reason: 'auto-resolved' | 'escalated' | 'user-resolved') => void;
 
 interface WSClientOptions {
   wsUrl: string;
@@ -19,6 +25,12 @@ interface WSClientOptions {
   onDone: DoneHandler;
   onError: ErrorHandler;
   onReady?: () => void;
+  onResolutionCheck?: ResolutionCheckHandler;
+  onMoreQuestionsCheck?: MoreQuestionsCheckHandler;
+  onSystemMessage?: SystemMessageHandler;
+  onEscalationOffer?: EscalationOfferHandler;
+  onContactForm?: ContactFormHandler;
+  onSessionClosed?: SessionClosedHandler;
 }
 
 const RECONNECT_BASE_MS = 1_000;
@@ -57,6 +69,18 @@ export class CityAssistWSClient {
       this.ws.send(frame);
     } else {
       this.messageQueue.push(frame);
+    }
+  }
+
+  /**
+   * Sends a structured client-to-server frame (resolution_response,
+   * escalation_accept, contact_submit, etc.) immediately.
+   *
+   * @param frame - A typed WSClientMessage object to serialize and send.
+   */
+  sendFrame(frame: WSClientMessage): void {
+    if (this.isAuthed && this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(frame));
     }
   }
 
@@ -114,6 +138,18 @@ export class CityAssistWSClient {
         this.options.onToken(frame.token);
       } else if (frame.type === 'done') {
         this.options.onDone(frame.sources);
+      } else if (frame.type === 'resolution_check') {
+        this.options.onResolutionCheck?.();
+      } else if (frame.type === 'more_questions_check') {
+        this.options.onMoreQuestionsCheck?.();
+      } else if (frame.type === 'system_message') {
+        this.options.onSystemMessage?.(frame.content);
+      } else if (frame.type === 'escalation_offer') {
+        this.options.onEscalationOffer?.(frame.department);
+      } else if (frame.type === 'contact_form') {
+        this.options.onContactForm?.();
+      } else if (frame.type === 'session_closed') {
+        this.options.onSessionClosed?.(frame.reason);
       } else if (frame.type === 'error') {
         this.options.onError(frame.message);
       }
@@ -128,6 +164,10 @@ export class CityAssistWSClient {
       if (event.code === 4001) {
         // Auth failure — do not reconnect.
         this.options.onError('Authentication failed. Check your API key.');
+        return;
+      }
+      if (event.code === 1000) {
+        // Clean close (session ended normally) — do not reconnect.
         return;
       }
       this._scheduleReconnect();

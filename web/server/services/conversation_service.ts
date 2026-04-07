@@ -72,11 +72,16 @@ export async function getOrCreateConversation(
  */
 /**
  * Updates a conversation's status and optionally marks it as escalated.
+ *
+ * @param db - Drizzle database client.
+ * @param conversationId - UUID of the conversation to update.
+ * @param status - New status value.
+ * @param wasEscalated - When true, sets the wasEscalated flag permanently.
  */
 export async function updateConversationStatus(
   db: DB,
   conversationId: string,
-  status: "new" | "open" | "resolved" | "escalated",
+  status: "new" | "open" | "resolved" | "escalated" | "auto-resolved",
   wasEscalated?: boolean,
 ): Promise<void> {
   const now = new Date();
@@ -86,10 +91,35 @@ export async function updateConversationStatus(
   // SLA timestamp tracking
   if (status === "resolved") set.resolvedAt = now;
   if (status === "escalated") set.escalatedAt = now;
+  if (status === "auto-resolved") {
+    set.resolvedAt = now;
+    set.autoResolvedAt = now;
+  }
 
   await db
     .update(conversations)
     .set(set)
+    .where(eq(conversations.id, conversationId));
+}
+
+/**
+ * Stores escalation contact details as a JSON object on a conversation.
+ *
+ * Called when a user confirms they want a city department to reach out.
+ * Name and phone are required; email is optional.
+ *
+ * @param db - Drizzle database client.
+ * @param conversationId - UUID of the conversation.
+ * @param contact - Contact details: required name + phone, optional email.
+ */
+export async function storeEscalationContact(
+  db: DB,
+  conversationId: string,
+  contact: { name: string; phone: string; email?: string },
+): Promise<void> {
+  await db
+    .update(conversations)
+    .set({ escalationContact: contact, updatedAt: new Date() })
     .where(eq(conversations.id, conversationId));
 }
 
@@ -98,10 +128,11 @@ export async function logMessage(
   conversationId: string,
   role: "user" | "assistant",
   content: string,
+  sources?: { title: string; url: string }[],
 ): Promise<Message> {
   const [msg] = await db
     .insert(messages)
-    .values({ conversationId, role, content })
+    .values({ conversationId, role, content, sources: sources ?? null })
     .returning();
 
   // Track first response time for SLA

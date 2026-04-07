@@ -27,6 +27,8 @@ function makeConversation(overrides: Partial<Conversation> = {}): Conversation {
     firstResponseAt: null,
     resolvedAt: null,
     escalatedAt: null,
+    autoResolvedAt: null,
+    escalationContact: null,
     createdAt: new Date("2025-01-01"),
     updatedAt: new Date("2025-01-01"),
     ...overrides,

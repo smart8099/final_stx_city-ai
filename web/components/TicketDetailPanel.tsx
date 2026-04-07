@@ -41,6 +41,22 @@ const STATUS_OPTIONS: { value: Conversation["status"]; label: string; color: str
   { value: "resolved", label: "Solved", color: "gray" },
 ];
 
+const STATUS_BADGE_COLOR: Record<string, string> = {
+  new: "orange",
+  open: "green",
+  escalated: "red",
+  resolved: "gray",
+  "auto-resolved": "teal",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  new: "New",
+  open: "Open",
+  escalated: "Escalated",
+  resolved: "Solved",
+  "auto-resolved": "Auto-Resolved",
+};
+
 const PRIORITY_OPTIONS: { value: string; label: string; color: string }[] = [
   { value: "urgent", label: "Urgent", color: "red" },
   { value: "high", label: "High", color: "orange" },
@@ -86,6 +102,8 @@ export default function TicketDetailPanel({
   const { departments } = useDepartments(tenantId);
   const { macros, addMacro, removeMacro } = useMacros(tenantId);
   const statusCfg = STATUS_OPTIONS.find((s) => s.value === conversation.status);
+  const isAutoResolved = conversation.status === "auto-resolved";
+  const effectiveReadOnly = readOnly || isAutoResolved;
 
   // Departments for dropdown
 
@@ -154,7 +172,18 @@ export default function TicketDetailPanel({
           {/* Status */}
           <Box>
             <FieldLabel>Status</FieldLabel>
-            {readOnly ? (
+            {conversation.status === "auto-resolved" ? (
+              <Badge
+                mt={1}
+                fontSize="11px"
+                colorScheme="teal"
+                variant="subtle"
+                display="block"
+                w="fit-content"
+              >
+                Auto-Resolved
+              </Badge>
+            ) : effectiveReadOnly ? (
               <Badge mt={1} fontSize="11px" colorScheme={statusCfg?.color || "gray"} variant="subtle">
                 {statusCfg?.label || conversation.status}
               </Badge>
@@ -178,7 +207,7 @@ export default function TicketDetailPanel({
           {/* Department */}
           <Box>
             <FieldLabel>Department</FieldLabel>
-            {readOnly || !canAssign ? (
+            {effectiveReadOnly || !canAssign ? (
               <Text fontSize="12px" color="gray.700" mt={1}>
                 {conversation.department || "Unassigned"}
               </Text>
@@ -232,7 +261,7 @@ export default function TicketDetailPanel({
           {/* Assignee */}
           <Box>
             <FieldLabel>Assignee</FieldLabel>
-            {readOnly || !canAssign ? (
+            {effectiveReadOnly || !canAssign ? (
               <Text fontSize="12px" color="gray.700" mt={1}>
                 {conversation.assignedTo || "Unassigned"}
               </Text>
@@ -253,7 +282,7 @@ export default function TicketDetailPanel({
           {/* Priority */}
           <Box>
             <FieldLabel>Priority</FieldLabel>
-            {readOnly ? (
+            {effectiveReadOnly ? (
               <Badge mt={1} fontSize="11px" colorScheme={PRIORITY_OPTIONS.find((p) => p.value === (conversation.priority || "normal"))?.color || "gray"} variant="subtle">
                 {PRIORITY_OPTIONS.find((p) => p.value === (conversation.priority || "normal"))?.label || "Normal"}
               </Badge>
@@ -298,6 +327,27 @@ export default function TicketDetailPanel({
                conversation.slaStatus === "warning" ? "Warning" : "On Track"}
             </Badge>
           </Box>
+
+          {/* Escalation Contact — shown when collected via widget */}
+          {conversation.escalationContact && (
+            <>
+              <Divider />
+              <Box>
+                <FieldLabel>Escalation Contact</FieldLabel>
+                <HStack mt={1} spacing={1.5}>
+                  <Text fontSize="12px" color="gray.700">👤 {conversation.escalationContact.name}</Text>
+                </HStack>
+                <HStack mt={1} spacing={1.5}>
+                  <Text fontSize="12px" color="gray.700">📞 {conversation.escalationContact.phone}</Text>
+                </HStack>
+                {conversation.escalationContact.email && (
+                  <HStack mt={1} spacing={1.5}>
+                    <Text fontSize="12px" color="gray.700">✉ {conversation.escalationContact.email}</Text>
+                  </HStack>
+                )}
+              </Box>
+            </>
+          )}
 
           <Divider />
 

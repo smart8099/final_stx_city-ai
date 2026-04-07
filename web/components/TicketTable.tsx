@@ -37,6 +37,7 @@ const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
   open: { color: "green", label: "Open" },
   escalated: { color: "red", label: "Escalated" },
   resolved: { color: "gray", label: "Solved" },
+  "auto-resolved": { color: "teal", label: "Auto-Resolved" },
 };
 
 const PRIORITY_CONFIG: Record<string, { color: string; label: string }> = {
@@ -180,7 +181,7 @@ export default function TicketTable({
             </MenuButton>
             <MenuList minW="120px">
               {Object.entries(STATUS_CONFIG)
-                .filter(([key]) => key !== "new")
+                .filter(([key]) => key !== "new" && key !== "auto-resolved")
                 .map(([key, cfg]) => (
                 <MenuItem key={key} fontSize="xs" onClick={() => onBulkStatusChange(selectedIds, key)}>
                   {cfg.label}

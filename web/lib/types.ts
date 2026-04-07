@@ -6,6 +6,7 @@ export interface Message {
   department?: string;
   confidence?: number;
   sources?: { file: string; page?: number }[];
+  webSources?: { title: string; url: string }[] | null;
   timestamp: string;
 }
 
@@ -28,7 +29,7 @@ export interface RoutedDepartment {
 export interface Conversation {
   id: string;
   sessionId: string;
-  status: "new" | "open" | "resolved" | "escalated";
+  status: "new" | "open" | "resolved" | "escalated" | "auto-resolved";
   department?: string;
   routedDepartments?: RoutedDepartment[];
   intent?: string;
@@ -41,6 +42,7 @@ export interface Conversation {
   messages: Message[];
   startedAt: string;
   updatedAt: string;
+  escalationContact?: { name: string; phone: string; email?: string } | null;
 }
 
 export interface Macro {

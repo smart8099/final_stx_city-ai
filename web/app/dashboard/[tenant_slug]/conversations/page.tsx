@@ -157,7 +157,7 @@ export default function ConversationsPage() {
     if (activeView === "view:breached") {
       return sorted.filter((c) => c.status !== "resolved" && c.slaStatus === "breached");
     }
-    if (["new", "open", "escalated", "resolved"].includes(activeView)) {
+    if (["new", "open", "escalated", "resolved", "auto-resolved"].includes(activeView)) {
       return sorted.filter((c) => c.status === activeView);
     }
     if (activeView === "dept:unassigned") {
