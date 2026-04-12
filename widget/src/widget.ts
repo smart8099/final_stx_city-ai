@@ -128,6 +128,9 @@ export class CityAssistWidget {
       onSessionClosed: (reason) => {
         this.ui!.closeSession(reason);
       },
+      onDisclaimer: (message) => {
+        this.ui!.showDisclaimer(message);
+      },
     });
 
     this.ui!.setOnSend((text) => {

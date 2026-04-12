@@ -1,5 +1,4 @@
 import { env } from "@/server/config";
-import { onGroqResponse, rateLimitState } from "./groq_rate_limiter";
 import { llmLog } from "@/server/logger";
 
 // LRU-like cache: api_key → LLM instance (bounded at 64)
@@ -8,16 +7,6 @@ const LLM_CACHE_MAX = 64;
 
 function _createLlm(apiKey?: string) {
   const provider = env.LLM_PROVIDER;
-
-  if (provider === "anthropic") {
-    const { ChatAnthropic } = require("@langchain/anthropic");
-    return new ChatAnthropic({
-      model: env.LLM_MODEL,
-      temperature: env.LLM_TEMPERATURE,
-      maxTokens: env.LLM_MAX_TOKENS,
-      anthropicApiKey: apiKey ?? env.ANTHROPIC_API_KEY,
-    });
-  }
 
   if (provider === "groq") {
     const { ChatGroq } = require("@langchain/groq");
@@ -38,7 +27,24 @@ function _createLlm(apiKey?: string) {
     });
   }
 
-  throw new Error(`Unsupported LLM_PROVIDER: "${provider}". Supported: groq, anthropic`);
+  if (provider === "openrouter") {
+    const { ChatOpenAI } = require("@langchain/openai");
+    return new ChatOpenAI({
+      modelName: env.LLM_MODEL,
+      temperature: env.LLM_TEMPERATURE,
+      maxTokens: env.LLM_MAX_TOKENS,
+      apiKey: apiKey ?? env.OPENROUTER_API_KEY,
+      configuration: {
+        baseURL: "https://openrouter.ai/api/v1",
+        defaultHeaders: {
+          "HTTP-Referer": "https://cityassist.app",
+          "X-Title": "CityAssist",
+        },
+      },
+    });
+  }
+
+  throw new Error(`Unsupported LLM_PROVIDER: "${provider}". Supported: groq, openrouter`);
 }
 
 export function getLlm(apiKey?: string): ReturnType<typeof _createLlm> {

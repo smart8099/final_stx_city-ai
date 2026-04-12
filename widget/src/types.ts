@@ -44,6 +44,7 @@ export interface Source {
 export type WSMessage =
   | { type: 'token'; token: string }
   | { type: 'done'; sources: Source[] }
+  | { type: 'disclaimer'; message: string }
   | { type: 'resolution_check' }
   | { type: 'more_questions_check' }
   | { type: 'system_message'; content: string }

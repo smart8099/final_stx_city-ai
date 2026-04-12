@@ -172,6 +172,7 @@ export const conversationsAdminRouter = router({
               id: m.id,
               role: m.role,
               content: m.content,
+              metadata: (m.metadata as { disclaimerReason?: string } | null) ?? null,
               webSources: (m.sources as { title: string; url: string }[] | null) ?? null,
               timestamp: m.createdAt.toISOString(),
             })),

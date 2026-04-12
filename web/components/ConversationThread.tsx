@@ -109,7 +109,47 @@ export default function ConversationThread({ conversation, hideHeader }: Props) 
         px={6}
         py={4}
       >
-        {conversation.messages.map((msg) => (
+        {conversation.messages.map((msg) => {
+          if (msg.role === "disclaimer") {
+            return (
+              <Flex key={msg.id} direction="column" align="stretch">
+                <Box
+                  bg="orange.50"
+                  border="1px solid"
+                  borderColor="orange.300"
+                  borderLeft="3px solid"
+                  borderLeftColor="orange.400"
+                  borderRadius="md"
+                  px={4}
+                  py={3}
+                >
+                  <HStack spacing={2} mb={1}>
+                    <Text fontSize="xs" fontWeight="700" color="orange.700">
+                      ⚠ Disclaimer shown to user
+                    </Text>
+                    <Text fontSize="10px" color="orange.500" ml="auto">
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </Text>
+                  </HStack>
+                  <Text fontSize="sm" color="gray.700" mb={msg.metadata?.disclaimerReason ? 2 : 0}>
+                    {msg.content}
+                  </Text>
+                  {msg.metadata?.disclaimerReason && (
+                    <Box bg="orange.100" borderRadius="sm" px={3} py={2}>
+                      <Text fontSize="11px" fontWeight="600" color="orange.800" mb={0.5}>
+                        Classifier reason (legal evidence):
+                      </Text>
+                      <Text fontSize="11px" color="orange.700">
+                        {msg.metadata.disclaimerReason}
+                      </Text>
+                    </Box>
+                  )}
+                </Box>
+              </Flex>
+            );
+          }
+
+          return (
           <Flex
             key={msg.id}
             direction="column"
@@ -220,7 +260,8 @@ export default function ConversationThread({ conversation, hideHeader }: Props) 
               </HStack>
             )}
           </Flex>
-        ))}
+          );
+        })}
       </VStack>
     </Box>
   );

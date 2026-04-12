@@ -221,6 +221,27 @@ const STYLES = `
     text-align: center;
   }
 
+  .disclaimer {
+    align-self: stretch;
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-left: 3px solid #f59e0b;
+    color: #92400e;
+    font-size: 11px;
+    line-height: 1.5;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-top: 2px;
+  }
+  .disclaimer-icon {
+    flex-shrink: 0;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
   .session-ended {
     align-self: center;
     font-size: 11px;
@@ -610,6 +631,29 @@ export class ChatUI {
     const el = document.createElement('div');
     el.className = 'system-msg';
     el.textContent = content;
+    this.messagesContainer.appendChild(el);
+    this._scrollToBottom();
+  }
+
+  /**
+   * Renders an amber caution disclaimer box below the last assistant message.
+   * Used for sensitive topics (legal, health, financial, permits, emergencies).
+   *
+   * @param message - The disclaimer text to display.
+   */
+  showDisclaimer(message: string): void {
+    const el = document.createElement('div');
+    el.className = 'disclaimer';
+
+    const icon = document.createElement('span');
+    icon.className = 'disclaimer-icon';
+    icon.textContent = '⚠️';
+
+    const text = document.createElement('span');
+    text.textContent = message;
+
+    el.appendChild(icon);
+    el.appendChild(text);
     this.messagesContainer.appendChild(el);
     this._scrollToBottom();
   }

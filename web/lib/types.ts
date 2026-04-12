@@ -1,7 +1,8 @@
 export interface Message {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "disclaimer";
   content: string;
+  metadata?: { disclaimerReason?: string } | null;
   intent?: string;
   department?: string;
   confidence?: number;

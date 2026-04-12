@@ -16,6 +16,7 @@ export type SystemMessageHandler = (content: string) => void;
 export type EscalationOfferHandler = (department: { name: string; phone: string } | null) => void;
 export type ContactFormHandler = () => void;
 export type SessionClosedHandler = (reason: 'auto-resolved' | 'escalated' | 'user-resolved') => void;
+export type DisclaimerHandler = (message: string) => void;
 
 interface WSClientOptions {
   wsUrl: string;
@@ -31,6 +32,7 @@ interface WSClientOptions {
   onEscalationOffer?: EscalationOfferHandler;
   onContactForm?: ContactFormHandler;
   onSessionClosed?: SessionClosedHandler;
+  onDisclaimer?: DisclaimerHandler;
 }
 
 const RECONNECT_BASE_MS = 1_000;
@@ -138,6 +140,8 @@ export class CityAssistWSClient {
         this.options.onToken(frame.token);
       } else if (frame.type === 'done') {
         this.options.onDone(frame.sources);
+      } else if (frame.type === 'disclaimer') {
+        this.options.onDisclaimer?.(frame.message);
       } else if (frame.type === 'resolution_check') {
         this.options.onResolutionCheck?.();
       } else if (frame.type === 'more_questions_check') {

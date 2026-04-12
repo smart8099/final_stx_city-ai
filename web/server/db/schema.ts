@@ -9,6 +9,7 @@ import {
   doublePrecision,
   integer,
   json,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -154,6 +155,9 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   // Web source links returned by the search tool — only set on assistant messages
   sources: json("sources").$type<{ title: string; url: string }[]>(),
+  // Arbitrary structured metadata — used by disclaimer events to store the LLM's
+  // classifier reason for legal audit purposes.
+  metadata: jsonb("metadata").$type<{ disclaimerReason?: string; [key: string]: unknown }>(),
   ...timestamps,
 });
 

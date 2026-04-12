@@ -12,7 +12,6 @@
  */
 import { z } from "zod";
 import { ChatGroq } from "@langchain/groq";
-import { ChatAnthropic } from "@langchain/anthropic";
 import type { BaseMessage } from "@langchain/core/messages";
 import { env } from "@/server/config";
 import { routingLog } from "@/server/logger";
@@ -35,10 +34,9 @@ export interface RoutingMatch {
 /**
  * Returns the LLM instance for routing and escalation classification.
  *
- * Uses `ROUTING_MODEL` env var (default: llama-3.3-70b-versatile) so the
- * model can be tuned per environment without a code change.
- * - Groq: reads `ROUTING_MODEL` env var
- * - Anthropic: claude-haiku-4-5
+ * Respects `LLM_PROVIDER` so routing always uses the same provider as the
+ * main agent. Uses `ROUTING_MODEL` for the model name so it can be tuned
+ * per environment without a code change.
  *
  * @param apiKey - Optional per-tenant API key override.
  * @returns A LangChain chat model instance.
@@ -46,12 +44,20 @@ export interface RoutingMatch {
 function getLlmForRouting(apiKey?: string) {
   const provider = env.LLM_PROVIDER;
 
-  if (provider === "anthropic") {
-    return new ChatAnthropic({
-      model: "claude-haiku-4-5",
+  if (provider === "openrouter") {
+    const { ChatOpenAI } = require("@langchain/openai");
+    return new ChatOpenAI({
+      modelName: env.ROUTING_MODEL,
       temperature: 0,
       maxTokens: 256,
-      anthropicApiKey: apiKey ?? env.ANTHROPIC_API_KEY,
+      apiKey: apiKey ?? env.OPENROUTER_API_KEY,
+      configuration: {
+        baseURL: "https://openrouter.ai/api/v1",
+        defaultHeaders: {
+          "HTTP-Referer": "https://cityassist.app",
+          "X-Title": "CityAssist",
+        },
+      },
     });
   }
 
@@ -116,6 +122,16 @@ export interface EscalationResult {
   /** Whether the conversation should be escalated to a human staff member. */
   shouldEscalate: boolean;
   /** Brief explanation from the LLM about why escalation was or was not triggered. */
+  reason: string;
+}
+
+/**
+ * Result returned by the disclaimer classifier.
+ */
+export interface DisclaimerResult {
+  /** Whether a disclaimer should be shown to the user. */
+  requiresDisclaimer: boolean;
+  /** Brief explanation from the LLM about why a disclaimer is or is not needed. */
   reason: string;
 }
 
@@ -204,7 +220,7 @@ ${deptList}`;
     // Defensive filter: only keep IDs that actually exist in our dept list,
     // and drop any match where the LLM produced no reason (empty reason = hallucinated match).
     const validIds = new Set(departments.map((d) => d.id));
-    const matches: RoutingMatch[] = parsed.departments.filter((d) =>
+    const matches: RoutingMatch[] = parsed.departments.filter((d: RoutingMatch) =>
       validIds.has(d.id) && d.reason.trim().length > 0,
     );
 
@@ -330,5 +346,86 @@ When in doubt, return false.`;
     const durationMs = Date.now() - t0;
     log.warn({ err, durationMs }, "Escalation detection failed — skipping");
     return { shouldEscalate: false, reason: "" };
+  }
+}
+
+/**
+ * Determines whether the assistant's response warrants a legal/safety/financial
+ * disclaimer based on the full context of the conversation.
+ *
+ * Uses the LLM rather than keyword matching so nuanced cases are handled
+ * correctly — e.g. a question phrased vaguely whose answer touches on legal
+ * rights, health risks, permits, or financial obligations.
+ *
+ * Never throws — returns `{ requiresDisclaimer: false, reason: "" }` on any error.
+ *
+ * @param tenant - Current tenant (for API key resolution).
+ * @param userMessage - The current user message.
+ * @param assistantAnswer - The assistant's response to evaluate.
+ * @returns Whether a disclaimer should be shown and why.
+ */
+export async function detectDisclaimer(
+  tenant: Tenant,
+  userMessage: string,
+  assistantAnswer: string,
+): Promise<DisclaimerResult> {
+  const schema = z.object({
+    requiresDisclaimer: z.boolean(),
+    reason: z.string(),
+  });
+
+  const systemPrompt = `You are a content safety classifier for a civic AI chatbot.
+Determine whether the assistant's response actually provides specific guidance or information on a sensitive topic where a resident could be harmed — legally, financially, physically, or health-wise — if they acted on it.
+
+ALWAYS show a disclaimer when the user's message describes or implies an active emergency or immediate physical danger — regardless of what the assistant said. Examples: fire, gas leak, flooding, building collapse, medical emergency, structural danger. These always require a disclaimer.
+
+For non-emergency situations, show a disclaimer ONLY when the response ACTIVELY PROVIDES specific information or guidance on:
+- Legal matters: specific rights, how to contest a fine, eviction processes, specific ordinances that apply
+- Health or safety: specific water quality results, mold remediation advice, hazardous material details
+- Financial obligations: specific eligibility criteria, exact tax amounts or exemptions, grant application guidance
+- Permits/zoning: whether a specific action is permitted, specific permit requirements for a project
+
+Do NOT show a disclaimer when:
+- The response is a general greeting, introduction, or capability overview
+- The response merely MENTIONS a topic category without giving specific guidance
+- The response is a simple factual answer (event times, office hours, park locations, trash schedules)
+- The response refers the user to a department without providing sensitive guidance (non-emergency only)
+- The response is a clarifying question
+
+The key test: (1) Is the user in immediate danger? → always show. (2) Otherwise, would a reasonable person rely on this specific response to make a consequential legal, financial, or health decision? If yes → show. If the response is too general to act on → no disclaimer.`;
+
+  const humanPrompt = `USER: ${userMessage}\nASSISTANT: ${assistantAnswer}`;
+
+  const t0 = Date.now();
+
+  try {
+    const llm = getLlmForRouting(tenant.llmApiKey ?? undefined);
+    const structured = llm.withStructuredOutput(schema, { includeRaw: true });
+    const { raw, parsed } = await structured.invoke([
+      { role: "system", content: systemPrompt },
+      { role: "human", content: humanPrompt },
+    ]);
+
+    const durationMs = Date.now() - t0;
+    const usage = extractUsage(raw);
+    routingLog.info(
+      {
+        tenant: tenant.slug,
+        durationMs,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        requiresDisclaimer: parsed.requiresDisclaimer,
+        reason: parsed.reason,
+      },
+      parsed.requiresDisclaimer
+        ? "Disclaimer detection complete — disclaimer required"
+        : "Disclaimer detection complete — no disclaimer needed",
+    );
+
+    return parsed;
+  } catch (err) {
+    const durationMs = Date.now() - t0;
+    routingLog.warn({ err, tenant: tenant.slug, durationMs }, "Disclaimer detection failed — skipping");
+    return { requiresDisclaimer: false, reason: "" };
   }
 }
