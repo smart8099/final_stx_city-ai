@@ -122,7 +122,7 @@ export class CityAssistWidget {
       },
       onContactForm: () => {
         this.ui!.showContactForm((name, phone, email) => {
-          this.wsClient!.sendFrame({ type: 'contact_submit', name, phone, email });
+          this.wsClient!.sendFrame({ type: 'contact_submit', name, phone, ...(email !== undefined ? { email } : {}) });
         });
       },
       onSessionClosed: (reason) => {
