@@ -154,6 +154,40 @@ export async function logMessage(
 }
 
 /**
+ * Stores a disclaimer event as a message row with role "disclaimer".
+ *
+ * The disclaimer text shown to the user is stored in `content`.
+ * The LLM's reason for triggering the disclaimer is stored in
+ * `metadata.disclaimerReason` for legal audit purposes.
+ *
+ * Does NOT update `firstResponseAt` — that SLA field is reserved for
+ * role "assistant" messages only.
+ *
+ * @param db - Drizzle database client.
+ * @param conversationId - UUID of the parent conversation.
+ * @param disclaimerText - The disclaimer text shown to the user.
+ * @param reason - The LLM classifier's explanation for why the disclaimer was triggered.
+ * @returns The inserted message row.
+ */
+export async function logDisclaimerMessage(
+  db: DB,
+  conversationId: string,
+  disclaimerText: string,
+  reason: string,
+): Promise<Message> {
+  const [msg] = await db
+    .insert(messages)
+    .values({
+      conversationId,
+      role: "disclaimer",
+      content: disclaimerText,
+      metadata: { disclaimerReason: reason },
+    })
+    .returning();
+  return msg!;
+}
+
+/**
  * Inserts routing matches into the conversation_departments junction table.
  *
  * Uses ON CONFLICT DO NOTHING so duplicate department detections are silently

@@ -22,8 +22,9 @@ import {
   updateConversationStatus,
   addRoutedDepartments,
   storeEscalationContact,
+  logDisclaimerMessage,
 } from "./server/services/conversation_service";
-import { detectDepartments, detectEscalation } from "./server/agent/routing";
+import { detectDepartments, detectEscalation, detectDisclaimer } from "./server/agent/routing";
 import { env } from "./server/config";
 import { wsLog } from "./server/logger";
 
@@ -326,12 +327,13 @@ async function handleWebSocket(ws: WebSocket) {
           const assistantMsgRow = await logMessage(db, conv.id, "assistant", finalAnswer, finalSources.length > 0 ? finalSources : undefined);
           void assistantMsgRow;
 
-          // Routing + escalation — fire and forget, never blocks response
+          // Routing, escalation, disclaimer — fire and forget, never blocks response
           void (async () => {
             try {
-              const [matches, escalation] = await Promise.all([
+              const [matches, escalation, disclaimer] = await Promise.all([
                 detectDepartments(tenant, departments, history, userMessage),
                 detectEscalation(tenant, userMessage, finalAnswer, history),
+                detectDisclaimer(tenant, userMessage, finalAnswer),
               ]);
               if (matches.length > 0 && userMsgRowId) {
                 await addRoutedDepartments(db, conv!.id, matches, userMsgRowId);
@@ -347,6 +349,12 @@ async function handleWebSocket(ws: WebSocket) {
                   : null;
                 ws.send(JSON.stringify({ type: "escalation_offer", department: deptPayload }));
                 log.info({ reason: escalation.reason }, "Escalation offer sent to client");
+              }
+              if (disclaimer.requiresDisclaimer) {
+                const disclaimerText = "This information is for general guidance only and may not reflect the most current regulations or apply to your specific situation. Please contact the relevant city department or consult a qualified professional before taking action.";
+                ws.send(JSON.stringify({ type: "disclaimer", message: disclaimerText }));
+                await logDisclaimerMessage(db, conv!.id, disclaimerText, disclaimer.reason);
+                log.info({ reason: disclaimer.reason }, "Disclaimer sent to client and persisted");
               }
             } catch (err) {
               log.warn({ err }, "Post-response classification failed — skipping");

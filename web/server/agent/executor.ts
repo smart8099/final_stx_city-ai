@@ -166,10 +166,10 @@ export async function* streamAgent(
           {
             llmCall: llmCallCount,
             llmDurationMs: Date.now() - tLlm,
-            groqTotalSec: meta?.timing?.total_time,
-            groqQueueSec: meta?.timing?.queue_time,
-            groqPromptSec: meta?.timing?.prompt_time,
-            groqCompletionSec: meta?.timing?.completion_time,
+            llmTotalSec: meta?.timing?.total_time,
+            llmQueueSec: meta?.timing?.queue_time,
+            llmPromptSec: meta?.timing?.prompt_time,
+            llmCompletionSec: meta?.timing?.completion_time,
           },
           "LLM call completed",
         );
@@ -205,6 +205,16 @@ export async function* streamAgent(
     if (msg.includes("Failed to call a function") || msg.includes("failed_generation")) {
       log.warn({ err: msg, durationMs: Date.now() - t0 }, "Malformed tool call from LLM — returning fallback");
       const fallback = "I'm sorry, I had trouble processing that request. Could you try rephrasing your question?";
+      yield { type: "token", token: fallback };
+      yield { type: "done", answer: fallback, sources: [] };
+      return;
+    }
+    // 429 rate limit — yield a friendly message instead of crashing the widget
+    const status = (err as { status?: number; response?: { status?: number } }).status
+      ?? (err as { response?: { status?: number } }).response?.status;
+    if (status === 429 || msg.includes("429") || msg.toLowerCase().includes("rate limit")) {
+      log.warn({ err: msg, durationMs: Date.now() - t0 }, "LLM rate limit — returning fallback");
+      const fallback = "I'm currently experiencing high demand. Please wait a moment and try again.";
       yield { type: "token", token: fallback };
       yield { type: "done", answer: fallback, sources: [] };
       return;

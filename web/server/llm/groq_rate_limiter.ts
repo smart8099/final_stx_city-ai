@@ -1,7 +1,7 @@
 /**
- * Groq rate-limit monitoring, exponential backoff, and admin email alerts.
+ * LLM rate-limit monitoring, exponential backoff, and admin email alerts.
  *
- * 1. Captures x-ratelimit-* response headers on every Groq API call.
+ * 1. Captures x-ratelimit-* response headers on Groq API calls (no-op for other providers).
  * 2. Fires a background admin email when token budget < threshold OR 429.
  * 3. Wraps executor.invoke() with p-retry exponential backoff on 429s.
  */
@@ -14,8 +14,8 @@ const ALERT_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 // ── Rate-limit state singleton ────────────────────────────────────────────────
 
 /**
- * Singleton that tracks the latest Groq rate-limit header values and manages
- * the alert cooldown timer.
+ * Singleton that tracks the latest LLM provider rate-limit header values and manages
+ * the alert cooldown timer. Populated only for providers that return x-ratelimit-* headers (e.g. Groq).
  */
 class RateLimitState {
   remainingTokens: number | null = null;
@@ -25,11 +25,14 @@ class RateLimitState {
   private lastAlertAt = 0;
 
   /**
-   * Parses and stores rate-limit values from Groq response headers.
+   * Parses and stores rate-limit values from response headers.
+   * No-op if x-ratelimit-* headers are absent (e.g. OpenRouter, Anthropic).
    *
    * @param headers - Response headers keyed by lowercase header name.
    */
   update(headers: Record<string, string | undefined>): void {
+    // Only update if at least one rate-limit header is present (Groq-specific headers)
+    if (!headers["x-ratelimit-remaining-tokens"] && !headers["x-ratelimit-limit-tokens"]) return;
     const parse = (v: string | undefined) =>
       v !== undefined ? parseInt(v, 10) : null;
     this.remainingTokens = parse(headers["x-ratelimit-remaining-tokens"]);
@@ -148,17 +151,18 @@ async function sendAlertEmail(
   if (!env.ADMIN_EMAIL || !env.SMTP_HOST) return;
 
   const body = [
-    "CityAssist — Groq Rate Limit Alert",
+    "CityAssist — LLM Rate Limit Alert",
     "=".repeat(45),
     "",
     `Reason      : ${reason}`,
+    `Provider    : ${env.LLM_PROVIDER}`,
     `Model       : ${env.LLM_MODEL}`,
     `Environment : ${env.APP_ENV}`,
     "",
     `Tokens   remaining : ${snap.remainingTokens} / ${snap.limitTokens}`,
     `Requests remaining : ${snap.remainingRequests} / ${snap.limitRequests}`,
     "",
-    "Reduce request volume or upgrade your Groq plan to avoid service interruption.",
+    "Reduce request volume or upgrade your LLM provider plan to avoid service interruption.",
   ].join("\n");
 
   const transporter = nodemailer.createTransport({
@@ -172,7 +176,7 @@ async function sendAlertEmail(
   await transporter.sendMail({
     from: env.ALERT_FROM_EMAIL,
     to: env.ADMIN_EMAIL,
-    subject: `[CityAssist] Groq Rate Limit — ${reason}`,
+    subject: `[CityAssist] LLM Rate Limit — ${reason}`,
     text: body,
   });
 }

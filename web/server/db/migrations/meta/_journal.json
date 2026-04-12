@@ -99,6 +99,13 @@
       "when": 1775200000000,
       "tag": "0008_escalation_contact_json",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1775940000000,
+      "tag": "0010_add_message_metadata",
+      "breakpoints": true
     }
   ]
 }

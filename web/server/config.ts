@@ -12,13 +12,13 @@ export const env = createEnv({
     REDIS_URL: z.string().default("redis://localhost:6379/0"),
 
     // LLM
-    LLM_PROVIDER: z.enum(["groq", "anthropic"]).default("groq"),
+    LLM_PROVIDER: z.enum(["groq", "openrouter"]).default("groq"),
     LLM_MODEL: z.string().default("llama-3.1-8b-instant"),
     ROUTING_MODEL: z.string().default("llama-3.3-70b-versatile"),
     LLM_TEMPERATURE: z.coerce.number().default(0.3),
     LLM_MAX_TOKENS: z.coerce.number().int().default(1024),
     GROQ_API_KEY: z.string().default(""),
-    ANTHROPIC_API_KEY: z.string().default(""),
+    OPENROUTER_API_KEY: z.string().default(""),
 
     // Groq backoff
     RATE_LIMIT_ALERT_THRESHOLD: z.coerce.number().default(0.1),
@@ -75,7 +75,7 @@ export const env = createEnv({
     LLM_TEMPERATURE: process.env.LLM_TEMPERATURE,
     LLM_MAX_TOKENS: process.env.LLM_MAX_TOKENS,
     GROQ_API_KEY: process.env.GROQ_API_KEY,
-    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
     RATE_LIMIT_ALERT_THRESHOLD: process.env.RATE_LIMIT_ALERT_THRESHOLD,
     BACKOFF_MULTIPLIER: process.env.BACKOFF_MULTIPLIER,
     BACKOFF_MIN_WAIT: process.env.BACKOFF_MIN_WAIT,
