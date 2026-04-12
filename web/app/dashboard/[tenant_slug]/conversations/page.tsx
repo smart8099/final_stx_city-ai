@@ -97,6 +97,7 @@ export default function ConversationsPage() {
       wasEscalated: c.wasEscalated,
       slaStatus: c.slaStatus as Conversation["slaStatus"],
       slaRemainingMs: c.slaRemainingMs ?? null,
+      escalationContact: (c.escalationContact as Conversation["escalationContact"]) ?? null,
       notes: c.notes as InternalNote[],
       messages: c.messages as Message[],
       startedAt: c.createdAt.toISOString?.() ?? String(c.createdAt),
